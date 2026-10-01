@@ -45,10 +45,48 @@
 -- 5. Latch contention:
 --	+ Contention on page latches is the most common scenario encountered on multi-CPU systems (high busy-concurrency system).
 --	+ Latch contention occurs when multiple threads concurrently attempt to acquire incompatible latches to the same in-memory structure.
---	+ It's considered problematic when the contention and wait time increased as enough to reduce resource (CPU) utilization, which hinders throughput.
+--	+ It's considered problematic when the contention and wait time increased as enough to reduce resource (CPU) utilization, and hinders throughput.
 --	+ Symptoms and causes:
---		- Observable in Performance Monitor with two counters (Transactions per second as throughput, average page latch wait time), watch over a period that increase the number of CPU available.
---		- As number of CPU increased, if the overall throughtput has decreased and the page latch wait time has increased.
---		- This inverse relationship between through put and page latch wait time is a common scenario that is easily diagnosed.
+--		- Observable in Performance Monitor with two counters (Transactions per second as throughput, average page latch wait time, number of CPU available), inspect the values over a period of time.
+--		- As number of CPU increased, the overall throughtput has decreased and the page latch wait time has increased -> less CPU is used by Server cause concurrent threads are waiting for latches.
+--		- This inverse relationship between throughput and page latch wait time is a common scenario that is easily diagnosed as latch contention.
 --	+ Factors affecting latch contention:
---		- High number of logical CPUs used by SQL Server: 
+--		- High number of logical CPUs used by SQL Server: Latch contention can occur on any multi-core system, commonly observed on system with 16+ CPU cores.
+--		- Depth of B-tree, clustered and non-clustered index design, size and density of rows per page, and access patterns (read/write/delete activity) are factors that can contribute to excessive page latch contention.
+--		- High degree of concurrency at the application level: occurs in conjunction with a high level of concurrent requests from the application tier.
+--		- Layout of logical files uses by SQL Server databases: Logical file layout can affect the level of latch contention caused by allocation structures.
+--		- I/O subsystem performance: Significant PAGEIOLATCH waits indicate SQL Server is waiting on the I/O subsystem.
+
+-- 6. Indicators of latch contention:
+-- The following measures of latch wait time are indicators that excessive latch contention is affecting application performance:
+--	+ Average page latch wait time consistently increases with throughput:
+--		- Query waiting task and calculate wait time over a time period using sys.dm_os_waiting_tasks DMV.
+--		- Query buffer descriptors to determine objects causing latch contention using sys.dm_os_buffer_descriptors with know resource description.
+--		- Measure average page latch wait time with the Performance Monitor counter Wait Statistics\Page Latch Waits\Average Wait Time.
+--	+ Percentage of total wait time spent on latch wait types during peak load:
+--		- If the average latch wait time as a percentage of overall wait time increases in line with application load, then latch contention might be affecting performance.
+--		- Compare the values of performance counters of page latch waits and non-page latch waits with computer's resources like CPU, I/O, memory, and network throughput.
+--	+ Throughput doesn't increase, and in some case decreases, as application load increases and the number of CPUs available to SQL Server increases.
+--	+ CPU Utilization doesn't increase as application workload increases: If the CPU utilization on the system doesn't increases as concurrency driven by application throughput increases, this is an indicator that SQL Server is waiting on something and symptomatic of latch contention.
+--	+ Suboptimal CPU utilization can be caused by other types of wait such as blocking on locks, I/O related waits or network-related issues -> required carefully analyze root cause.
+
+-- 7. SQL Server latch contention scenarios:
+--	+ 
+
+
+
+-- Query the current wait buffer latches:
+SELECT 
+	wt.session_id,
+	wt.wait_type,
+	er.last_wait_type AS last_wait_type,
+	wt.wait_duration_ms,
+	wt.blocking_session_id,
+	wt.blocking_exec_context_id,
+	resource_description
+FROM sys.dm_os_waiting_tasks AS wt
+INNER JOIN sys.dm_exec_sessions AS es ON es.session_id = wt.session_id
+INNER JOIN sys.dm_exec_requests AS er ON er.session_id = wt.session_id
+WHERE es.is_user_process = 1
+	AND wt.wait_type <> 'SLEEP_TASK'
+ORDER BY wt.wait_duration_ms DESC
