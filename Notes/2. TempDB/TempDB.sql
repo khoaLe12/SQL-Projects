@@ -4,7 +4,7 @@
 -- 1. Purpose:
 --	Tempdb is a shared global resource used to store temporary data, including:
 --		+ User objects: temporary tables and indexes, temporary stored procedures, large variables, table variables, results of table-valued functions, cursors.
---		+ Internal objects: work tables for spool operations, hash join/hash aggregation work files, intermediate sort results for GROUP BY, ORDER BY, UNION queries, and index build/maintenance operations (e.g., SORT_IN_TEMPDB).
+--		+ Internal objects: work tables for spool operations, such as intermediate sort results for GROUP BY, ORDER BY, UNION queries; hash join/hash aggregation work files; and index build/maintenance operations (e.g., SORT_IN_TEMPDB).
 --		+ Version stores: row versions generated during data modification when using row versioning-based isolation levels (e.g., READ COMMITTED SNAPSHOT or SNAPSHOT).
 -- 2. File structure:
 --	Tempdb consists of:
