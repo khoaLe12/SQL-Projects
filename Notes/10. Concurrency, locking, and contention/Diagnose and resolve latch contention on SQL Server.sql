@@ -71,7 +71,17 @@
 --	+ Suboptimal CPU utilization can be caused by other types of wait such as blocking on locks, I/O related waits or network-related issues -> required carefully analyze root cause.
 
 -- 7. SQL Server latch contention scenarios:
---	+ 
+-- Last page/trailing page insert contention:
+--	+ Commonly occur on schema design that create an index containing a sequentially increasing leading key column such as identity or date column.
+--		-> All insertion happend at the right-most edge of the B-tree -> cause EX latch contentions to be concentrated at a single page at high-concurrency traffic scenarios.
+--	+ Design factors to consider: Use non-sequential column as leading column key column, or use hash value of key columns to distribute insertion across hash partition.
+-- Latch contention on small tables with a non-clustered index and random inserts (queue table):
+--	+ This scenario is typically seen when a SQL table is used as a temporary queue (like asynchronous messaging system).
+--	+ EX and SH latch contention can occur under the following conditions:
+--		- Insert, select, update, or delete operations occus under high concurrency.
+--		- Row size is relatively small (leading to dense page).
+--		- The number of roes in the table is relatively small, leading to a shallow B-tree.
+--
 
 
 
