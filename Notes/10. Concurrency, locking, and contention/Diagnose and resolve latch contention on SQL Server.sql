@@ -8,7 +8,7 @@
 --	+ There are various buffer latch types for accessing pages in the buffer pool including exclusive latch (PAGELATCH_EX), shared latch (PAGELATCH_SH), ...
 --	+ To performed I/O disk operations, it required I/O latch; the type of latch depend on request, types including exclusive (PAGEIOLATCH_EX) or shared (PAGEIOLATCH_SH), etc.
 --	+ I/O latches help to prevent another worker thread from loading the same page into the buffer pool with an incompatible latch.
---	+ Latches are also used to protect access to internal memory structures other than buffer pool pages, known as non-buffer latches.
+--	+ Latches are also used to protect access to internal memory structures other than buffer pool pages, known as non-buffer latches; Ex: root splits latch (ACCESS_METHODS_HOBT_VIRTUAL_ROOT).
  
 -- 2. Latch vs Lock:
 --	+ Buffer latches are held only for the duration of the physical operation on the page, locks are held for the duration of the logical transaction.
@@ -74,18 +74,49 @@
 -- Last page/trailing page insert contention:
 --	+ Commonly occur on schema design that create an index containing a sequentially increasing leading key column such as identity or date column.
 --		-> All insertion happend at the right-most edge of the B-tree -> cause EX latch contentions to be concentrated at a single page at high-concurrency traffic scenarios.
---	+ Design factors to consider: Use non-sequential column as leading column key column, or use hash value of key columns to distribute insertion across hash partition.
+--	+ Design factors to consider: Use non-sequential column as leading column key column, or use hash partitioning with a computed column to evenly distribute insertion across hash partition.
 -- Latch contention on small tables with a non-clustered index and random inserts (queue table):
 --	+ This scenario is typically seen when a SQL table is used as a temporary queue (like asynchronous messaging system).
 --	+ EX and SH latch contention can occur under the following conditions:
 --		- Insert, select, update, or delete operations occus under high concurrency.
 --		- Row size is relatively small (leading to dense page).
 --		- The number of roes in the table is relatively small, leading to a shallow B-tree.
---
+-- Latch contention on page free space (PFS) pages:
+--	+ The PFS page contains information about the pages available for allocation when a new page is required by an insert or update operation.
+--	+ The page acquire UP latch when any allocations or deallocations occur.
+--	+ latch contention can occur if there is a small number of data files in a filegroup and a large number of CPU cores.
+--	-> Solution: increase the number of files per filegroup.
+
+-- 8. Handle latch contention for different table patterns:
+-- Use a non-sequential leading index key:
+--	+ There are some available options:
+--		- Replace a sequential index key with a non-sequential key; Ex: ATM_ID (associate with a single customer) as key to insert a new withdrawal transaction (distribute inserts across a key range).
+--		- Reordered index definition to put a non-sequential key column as leading column; this approach require modify select queries to utilize new index definition.
+--		- Using a hash values as the leading column.
+--		- Use a GUID as the leading key column; this technique can introduce potential downsides of more page-splits, poor physical organization and low page density.
+--	+ This technique allows the use of other partitioning features.
+--	+ Trade-offs:
+--		- Possible challenges when choosing a key/index to ensure 'close enough to' uniform distribution of inserts all of the time.
+--		- GUID as leading column or random inserts across B-Tree can result in excessive page-split operations -> lead to latch contention on non-leaf pages.
+-- Use hash partitioning with a computed column:
+--	+ Follow these steps (implemented example below):
+--		- 1. Create a new filegroup or use an existing filegroup to hold the partitions.
+--		- 2. Create the same number of files as number of physical CPU cores for the filegroup (less allocation contention).
+--		- 3. Partitioning the tables into a number of partitions equal to the number of CPU cores (define partition scheme and function, bind it to the filegroup).
+--		- 4. Add a tinyint or smallint hash column using a good computed hash distribution (use HASHBYTES or BINARY_CHECKSUM with modulo).
+--		- 5. Create the index contains hash column on the new partitioning scheme.
+--	+ The hash value modulus operation ensures that the inserts are split across the different B-trees, which alleviates the bottleneck.
+--	+ Trade-offs:
+--		- Select queries need to be modified to include the hash partition in the predicate.
+--		- It eliminate the possibility of partition elimination on certain other queries, such as range-based reports.
+--		- When joining other table, it requires hash value on the second table as join criteria.
+--		- It prevents the use of partitioning for other management features (sliding window archiving, partition switch).
 
 
 
--- Query the current wait buffer latches:
+
+
+-- Query the current wait buffer latches
 SELECT 
 	wt.session_id,
 	wt.wait_type,
@@ -100,3 +131,90 @@ INNER JOIN sys.dm_exec_requests AS er ON er.session_id = wt.session_id
 WHERE es.is_user_process = 1
 	AND wt.wait_type <> 'SLEEP_TASK'
 ORDER BY wt.wait_duration_ms DESC
+
+
+
+
+
+-- Isolate the object causing latch contention using sys.dm_os_buffer_descriptors
+SELECT
+	wt.session_id,
+	wt.wait_type,
+	wt.wait_duration_ms,
+	s.name AS schema_name,
+	o.name AS object_name,
+	i.name AS index_name
+FROM sys.dm_os_buffer_descriptors AS bd
+INNER JOIN (
+	SELECT 
+		*,
+		CHARINDEX(':', wt.resource_description) AS file_index,
+		CHARINDEX(':', wt.resource_description, CHARINDEX(':', wt.resource_description) + 1) AS page_index,
+		wt.resource_description as rd
+	FROM sys.dm_os_waiting_tasks AS wt
+	WHERE wt.wait_type LIKE 'PAGELATCH%'
+) AS wt ON bd.database_id = SUBSTRING(wt.rd, 0, wt.file_index)
+	AND bd.file_id = SUBSTRING(wt.rd, wt.file_index + 1, 1)
+	AND bd.page_id = SUBSTRING(wt.rd, wt.page_index + 1, LEN(wt.rd))
+INNER JOIN sys.allocation_units AS au ON bd.allocation_unit_id = au.allocation_unit_id
+INNER JOIN sys.partitions AS p ON au.container_id = p.partition_id
+INNER JOIN sys.indexes AS i ON p.index_id = i.index_id AND p.object_id = i.object_id
+INNER JOIN sys.objects AS o ON i.object_id = o.object_id
+INNER JOIN sys.schemas AS s ON o.schema_id = s.schema_id
+ORDER BY wt.wait_duration_ms DESC;
+
+
+
+
+
+-- Alternative technique to isolate the object causing latch contention
+-- 1. Enable trace flag 3604 to enable console output
+DBCC TRACEON (3604);
+
+-- 2. Read information of resource_description column of sys.dm_os_waiting_tasks: '1:1:111305' | db_id:file_id:page_id
+DBCC PAGE (1, 1, 111305, -1);
+
+-- 3. Examine the DBCC output, find associated Metadata ObjectID
+
+
+
+
+
+-- Use hash partitioning with a computed column
+USE AdventureWorks2019;
+GO
+
+-- 1. Create new filegroup and optionally add 16 files (assumpt number of CPU cores is 16)
+ALTER DATABASE AdventureWorks2019
+ADD FILEGROUP AddressFG;
+
+ALTER DATABASE AdventureWorks2019
+ADD FILE (
+	NAME = 'AddressFile1',
+	FILENAME = 'D:\0. Khoa\0. SQL Projects\Notes\10. Concurrency, locking, and contention\AddressFile1.ndf',
+	SIZE = 50MB,
+	MAXSIZE = 500MB,
+	FILEGROWTH = 10MB
+) TO FILEGROUP AddressFG;
+
+-- 2. Create partition scheme and function
+CREATE PARTITION FUNCTION [pf_hash16](TINYINT)
+	AS RANGE LEFT
+	FOR VALUES (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+
+CREATE PARTITION SCHEME [ps_hash16]
+	 AS PARTITION [pf_hash16]
+	 ALL TO ([AddressFG]);
+
+-- 3. Add computed column to table (consider using bulk loading techniques)
+ALTER TABLE [Person].[Address]
+	ADD [HashValue] AS (CONVERT (TINYINT, ABS(BINARY_CHECKSUM([AddressID]) % (16)), (0))) PERSISTED NOT NULL;
+
+-- 4. Add hash column as leading column of index
+ALTER TABLE [Person].[Address] DROP CONSTRAINT [PK_Address_AddressID];
+
+DROP INDEX [PK_Address_AddressID] ON [Person].[Address];
+
+CREATE CLUSTERED INDEX [PK_Address_HashValue_AddressID] 
+ON [Person].[Address] (HashValue, AddressID)
+WITH (DROP_EXISTING = OFF);
