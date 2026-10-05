@@ -1,55 +1,68 @@
+﻿-- DIAGNOSE AND RESOLVE LATCH CONTENTION IN SQL SERVER
 
--- DIAGNOSE AND RESOLVE LATCH CONTENTION ON SQL SEREVR
+-- 1. OVERVIEW:
+--	+ A latch is a lightweight synchronization primitive used by SQL Server to protect the physical consistency of in-memory structures. Example include:
+--		- Data pages
+--		- Index pages
+--		- Allocation pages (PFS, GAM, SGAM, IAM)
+--		- Internal SQL Server memory structures
+--	+ Latches differ from locks:
+--		- Latches protect physical consistency of memory structures.
+--		- Locks protect logical consistency of data during transactions.
+--		- Latches are typically held only for the duration of a physical operation.
+--		- Locks are typically held for the duration required by transaction isolation rules.
+--	+ SQL Server uses three broad categories of latches:
+--		1. Buffer latches (PAGELATCH_*)
+--			- Protect pages already loaded into the buffer pool.
+--			- Used during read and write operations against in-memory pages.
+--		2. IO latches (PAGEIOLATCH_*)
+--			- Protect pages while they are being loaded from disk into the buffer pool.
+--			- Prevent multiple workers from loading the same page simultaneously.
+--		3. Non-buffer latches (LATCH_*)
+--			- Protect internal structures other than data or index pages.
+--			- Example: root splits latch (ACCESS_METHODS_HOBT_VIRTUAL_ROOT)
 
--- 1. Latch:
---	+ Latches are lightweight synchronization primitives that are used to guarantee consistency of in-memory structures including: index, data pages, non-leaf pages, ...
---	+ Server uses buffer latches to protect pages in the buffer pool and I/O latches to protect pages not yet loaded into the buffer pool.
---	+ Whenever a worker thread write data to or read data from a page in the buffer pool, it must first be queued to acquire a buffer latch for the page, waiting for latch will accumulate wait time on requesting latch type.
---	+ There are various buffer latch types for accessing pages in the buffer pool including exclusive latch (PAGELATCH_EX), shared latch (PAGELATCH_SH), ...
---	+ To performed I/O disk operations, it required I/O latch; the type of latch depend on request, types including exclusive (PAGEIOLATCH_EX) or shared (PAGEIOLATCH_SH), etc.
---	+ I/O latches help to prevent another worker thread from loading the same page into the buffer pool with an incompatible latch.
---	+ Latches are also used to protect access to internal memory structures other than buffer pool pages, known as non-buffer latches; Ex: root splits latch (ACCESS_METHODS_HOBT_VIRTUAL_ROOT).
- 
--- 2. Latch vs Lock:
---	+ Buffer latches are held only for the duration of the physical operation on the page, locks are held for the duration of the logical transaction.
---	+ Latches are used to provide memory consistency, whereas locks are used to provide logical transactional consistency.
---	+ Performance cost of latch is low, allow for maximum concurrency and provide maximum performance.
---	+ Performance cost of lock is high as it must be held for the duration of the transaction.
-
--- 3. Latch modes and compatibility:
---	+ Latches are acquired in one of five different modes, which relate to level of access:
---		- KP: Keep latch. Ensures that the referenced structure can't be destroyed.
---		- SH: Shared latch. Required to read the referenced structure.
---		- UP: Update latch. Used to mark pages that are intended to be modified/written.
---		- EX: Exclusive latch. Blocks other threads from writing to or reading from the referenced structure.
---		- DT: Destroy latch. Must be acquired before destroying contents of referenced structure; Ex: used by lazy writer process to free up a clean page.
---	+ Latch modes have different levels of compatibility (Y indicates compatibility and N indicates incompatibility):
+-- 2. LATCH MODES:
+--	+ Latches can be acquired in five modes: 
+--		- KP (Keep): prevents the protected structure from being destroyed.
+--		- SH (Shared): required for read access.
+--		- UP (Update): indicates intent to modify a structure.
+--		- EX (Exclusive): allows one worker to modify the structure, incompatible requests must wait.
+--		- DT (Destroy): required before destroying the protected structure, Ex: freeing a clean buffer page.
+--	+ Compatibility Matrix:
 --			KP	SH	UP	EX	DT
 --		KP	Y	Y	Y	Y	N
 --		SH	Y	Y	Y	N	N
 --		UP	Y	Y	N	N	N
 --		EX	Y	N	N	N	N
 --		DT	N	N	N	N	N
---	+ Multiple latches can be concurrently acquired on the same structure as long as the latch are compatible.
---	+ SQL Server enforces latch compatibility by requiring the incompatible latch requests to wait in a queue until a signal indicating the outstanding latch requests are completed.
+--	+ Multiple latches may exist simultaneously if they are compatible.
+--	+ Incompatible requests are queued until the current latch holder releases the latch.
 --	+ A spinlock of type SOS_Task is used to protect the wait queue by enforcing serialized access to the queue, this spinlock is responsible for signaling threads in the queue.
 --	+ The wait queue is processed on a first in, first out (FIFO) basis.
 
--- 4. latch wait types:
---	+ Cumulative wait information is tracked by SQL Server, stored in DMV sys.dm_os_wait_stats.
---	+ SQL Server employs three latch wait types as defined by wait_type in sys.dm_os_wait_stats.
---		- Buffer (BUF) latch: used to guarantee consistency of user objects, and protect data pages used by Server including: PFS, GAM, SGAM, and IAM pages; buffer latches are reported as type PAGELATCH_*
---		- Non-buffer (Non-BUF) latch: used to guarantee consistency of any in-memory structures other than buffer pool pages; non-buffer latches are reported as type LATCH_*
---		- IO latch: a subset of buffer latches that protect the structures when laoding into the buffer pool with an I/O operation; these latches are reported as type PAGEIOLATCH_*
+-- 3. LATCH WAIT TYPES:
+--	+ SQL Server records cumulative wait statistics in sys.dm_os_wait_stats
+--	+ Common latch-related waits:
+--		- Buffer latch (PAGELATCH_*): waiting on pages already in memory, indicates memory-side page contention.
+--		- IO latch (PAGEIOLATCH_*): waiting for pages to be read from disk, often indicates storage subsystem latency.
+--		- Non-buffer latch (LATCH_*): waiting on internal memory structures that are not buffer pages.
+--	+ Important:
+--		- Not all latch waits indicate a performance problem.
+--		- Some amount of latch waiting is normal in highly concurrent systems.
 
--- 5. Latch contention:
---	+ Contention on page latches is the most common scenario encountered on multi-CPU systems (high busy-concurrency system).
---	+ Latch contention occurs when multiple threads concurrently attempt to acquire incompatible latches to the same in-memory structure.
---	+ It's considered problematic when the contention and wait time increased as enough to reduce resource (CPU) utilization, and hinders throughput.
---	+ Symptoms and causes:
---		- Observable in Performance Monitor with two counters (Transactions per second as throughput, average page latch wait time, number of CPU available), inspect the values over a period of time.
---		- As number of CPU increased, the overall throughtput has decreased and the page latch wait time has increased -> less CPU is used by Server cause concurrent threads are waiting for latches.
---		- This inverse relationship between throughput and page latch wait time is a common scenario that is easily diagnosed as latch contention.
+-- 4. WHAT IS LATCH CONTENTION?
+--	+ Latch contention occurs when multiple worker threads attempt to acquire incompatible latches on the same in-memory structure.
+--	+ Excessive latch contention becomes a problem when:
+--		- Wait times increase significantly.
+--		- Throughput stops increasing or decreases.
+--		- CPU utilization remains low despite increasing workload.
+--		- Workers spend substantial time waiting rather than performing useful work.
+--	+ Typical symptoms (inspect with Performance Monitor with 2 counters: Transactions per second as throughput, average page latch wait time)
+--		- Increased PAGELATCH waits.
+--		- Reduces transaction throughput.
+--		- Reduces scalability as CPU count increases.
+--		- Lower than expected CPU utilization.
 --	+ Factors affecting latch contention:
 --		- High number of logical CPUs used by SQL Server: Latch contention can occur on any multi-core system, commonly observed on system with 16+ CPU cores.
 --		- Depth of B-tree, clustered and non-clustered index design, size and density of rows per page, and access patterns (read/write/delete activity) are factors that can contribute to excessive page latch contention.
@@ -57,66 +70,100 @@
 --		- Layout of logical files uses by SQL Server databases: Logical file layout can affect the level of latch contention caused by allocation structures.
 --		- I/O subsystem performance: Significant PAGEIOLATCH waits indicate SQL Server is waiting on the I/O subsystem.
 
--- 6. Indicators of latch contention:
--- The following measures of latch wait time are indicators that excessive latch contention is affecting application performance:
---	+ Average page latch wait time consistently increases with throughput:
---		- Query waiting task and calculate wait time over a time period using sys.dm_os_waiting_tasks DMV.
---		- Query buffer descriptors to determine objects causing latch contention using sys.dm_os_buffer_descriptors with know resource description.
---		- Measure average page latch wait time with the Performance Monitor counter Wait Statistics\Page Latch Waits\Average Wait Time.
---	+ Percentage of total wait time spent on latch wait types during peak load:
---		- If the average latch wait time as a percentage of overall wait time increases in line with application load, then latch contention might be affecting performance.
---		- Compare the values of performance counters of page latch waits and non-page latch waits with computer's resources like CPU, I/O, memory, and network throughput.
---	+ Throughput doesn't increase, and in some case decreases, as application load increases and the number of CPUs available to SQL Server increases.
---	+ CPU Utilization doesn't increase as application workload increases: If the CPU utilization on the system doesn't increases as concurrency driven by application throughput increases, this is an indicator that SQL Server is waiting on something and symptomatic of latch contention.
---	+ Suboptimal CPU utilization can be caused by other types of wait such as blocking on locks, I/O related waits or network-related issues -> required carefully analyze root cause.
+-- 5. COMMON CAUSES OF LATCH CONTENTION:
+--	+ Last page insert contention:
+--		- Common on tables inserts use a sequential index key: IDENTITY, BIGINT sequence, DATETIME
+--		- All inserts target the same right-most leaf page of the B-tree, resulting in PAGELATCH_EX contention.
+--		→ Solutions: Use a non-sequential leading key, reorder index keys, introduce hash partitioning.
+--	+ Small table + shallow B-tree contention:
+--		- Frequently observed in queu tables and messaging systems.
+--		- Contributing factors: small row size, high page density, small table size, high concurrency.
+--		- Many workers repeatedly access the same root and upper-level pages, generating SH and EX latch contention.
+--	+ PFS page contention:
+--		- PFS (Page Free Space) pages track allocation information.
+--		- Page allocations and deallocations require UP latches.
+--		- Contention typically occurs when: allocation rate is high, few data files exist, CPU concurrency is high.
+--		→ Solutions: add multiple equally sized data files, distribute allocation activity across multiple PFS pages.
+--	+ PAGEIOLATCH contention:
+--		- Indicates workers are waiting for data pages to be loaded from disk.
+--		- Common causes: slow storage subsystem, excessive physical reads, memory pressure.
 
--- 7. SQL Server latch contention scenarios:
--- Last page/trailing page insert contention:
---	+ Commonly occur on schema design that create an index containing a sequentially increasing leading key column such as identity or date column.
---		-> All insertion happend at the right-most edge of the B-tree -> cause EX latch contentions to be concentrated at a single page at high-concurrency traffic scenarios.
---	+ Design factors to consider: Use non-sequential column as leading column key column, or use hash partitioning with a computed column to evenly distribute insertion across hash partition.
--- Latch contention on small tables with a non-clustered index and random inserts (queue table):
---	+ This scenario is typically seen when a SQL table is used as a temporary queue (like asynchronous messaging system).
---	+ EX and SH latch contention can occur under the following conditions:
---		- Insert, select, update, or delete operations occus under high concurrency.
---		- Row size is relatively small (leading to dense page).
---		- The number of roes in the table is relatively small, leading to a shallow B-tree.
--- Latch contention on page free space (PFS) pages:
---	+ The PFS page contains information about the pages available for allocation when a new page is required by an insert or update operation.
---	+ The page acquire UP latch when any allocations or deallocations occur.
---	+ latch contention can occur if there is a small number of data files in a filegroup and a large number of CPU cores.
---	-> Solution: increase the number of files per filegroup.
+-- 6. FACTORS THAT INFLUENCE LATCH CONTENTION:
+--	+ Latch contention is commonly observed on servers with high concurrency and large CPU counts (16+ cores and above).
+--	+ Factors:
+--		- Number of logical CPUs.
+--		- Degree of concurrency.
+--		- B-tree depth.
+--		- Row size and page density.
+--		- Clustered and nonlustered index design.
+--		- Access patterns (read/write/delete).
+--		- Data file layout.
+--		- I/O subsystem performance.
 
--- 8. Handle latch contention for different table patterns:
--- Use a non-sequential leading index key:
---	+ There are some available options:
+-- 7. IDENTIFYING LATCH CONTENTION:
+--	+ Indicators include:
+--		- Increasing average latch wait times.
+--		- Growing percentage of total waits spent on latch waits.
+--		- Throughput plateauing as workload increases.
+--		- CPU utilizarion remaining low during peak load.
+--	+ Always correlate latch waits with
+--		- CPU utilization.
+--		- Throughput.
+--		- I/O latency.
+--		- Lock waits.
+--		- Network bottlenecks.
+--	+ Similar symptoms can be caused by other bottlenecks.
+
+-- 8. CONTENTION MITIGATION TECHNIQUE:
+--	A. USE A NON-SEQUENTIAL LEADING KEY:
+--	+ Options:
 --		- Replace a sequential index key with a non-sequential key; Ex: ATM_ID (associate with a single customer) as key to insert a new withdrawal transaction (distribute inserts across a key range).
---		- Reordered index definition to put a non-sequential key column as leading column; this approach require modify select queries to utilize new index definition.
+--		- Reordered index columns; this approach require modify select queries to utilize new index definition.
 --		- Using a hash values as the leading column.
 --		- Use a GUID as the leading key column; this technique can introduce potential downsides of more page-splits, poor physical organization and low page density.
---	+ This technique allows the use of other partitioning features.
+--	+ Benefits:
+--		- Inserts distributed across multiple leaf pages.
+--		- Reduces right-most page contention.
+--		- Allows the use of other partitioning features.
 --	+ Trade-offs:
 --		- Possible challenges when choosing a key/index to ensure 'close enough to' uniform distribution of inserts all of the time.
 --		- GUID as leading column or random inserts across B-Tree can result in excessive page-split operations -> lead to latch contention on non-leaf pages.
--- Use hash partitioning with a computed column:
---	+ Follow these steps (implemented example below):
---		- 1. Create a new filegroup or use an existing filegroup to hold the partitions.
---		- 2. Create the same number of files as number of physical CPU cores for the filegroup (less allocation contention).
---		- 3. Partitioning the tables into a number of partitions equal to the number of CPU cores (define partition scheme and function, bind it to the filegroup).
---		- 4. Add a tinyint or smallint hash column using a good computed hash distribution (use HASHBYTES or BINARY_CHECKSUM with modulo).
---		- 5. Create the index contains hash column on the new partitioning scheme.
---	+ The hash value modulus operation ensures that the inserts are split across the different B-trees, which alleviates the bottleneck.
+--	B. Use hash partitioning with a computed column:
+--	+ Approach:
+--		1. Create a new filegroup or use an existing filegroup to hold the partitions.
+--		2. Create the same number of files as number of physical CPU cores for the filegroup (less allocation contention).
+--		3. Partitioning the tables into a number of partitions equal to the number of CPU cores (define partition scheme and function, bind it to the filegroup).
+--		4. Add a tinyint or smallint hash column using a good computed hash distribution (use HASHBYTES or BINARY_CHECKSUM with modulo).
+--		5. Create the index contains hash column on the new partitioning scheme.
+--	+ Benefits:
+--		- Distributes inserts across multiple B-trees.
+--		- Eliminates a single hot insert page.
+--		- The hash value modulus operation ensures that the inserts are split across the different B-trees, which alleviates the bottleneck.
 --	+ Trade-offs:
 --		- Select queries need to be modified to include the hash partition in the predicate.
 --		- It eliminate the possibility of partition elimination on certain other queries, such as range-based reports.
 --		- When joining other table, it requires hash value on the second table as join criteria.
 --		- It prevents the use of partitioning for other management features (sliding window archiving, partition switch).
 
+-- 9. KEY TAKEAWAY:
+--	+ Latches are essential for protecting SQL Server's internal structures and some latch wait is normal.
+--	+ Focus investigations on scenarios where increasing concurrency results in:
+--		- Higher PAGELATCH/PAGEIOLATCH waits.
+--		- Reduced throughput.
+--		- Poor CPU utilization.
+--	+ The most common causes are:
+--		- Last-page insert contention.
+--		- Queue-table contention.
+--		- Allocation-page contention (PFS/GAM/SGAM).
+--		- Storage latency (PAGEIOLATCH).
+--	+ Correct diagnosis should always precede corrective action.
 
 
 
 
--- Query the current wait buffer latches
+
+
+-- View active latch waits:
 SELECT 
 	wt.session_id,
 	wt.wait_type,
@@ -136,6 +183,7 @@ ORDER BY wt.wait_duration_ms DESC
 
 
 
+-- OBTAIN PAGE INFORMATION:
 -- Isolate the object causing latch contention using sys.dm_os_buffer_descriptors
 SELECT
 	wt.session_id,
