@@ -1,11 +1,18 @@
 
 
 
--- Table design strategy
+-- TABLE DESIGN STRATEGIES
 -- 1. Avoid over normalizing table since it make query to use JOIN operations.
 -- 2. Normalize table only when it has many duplicate values, or consists of large object data/ row overflow data.
 -- 3. Make clustered index as narrow as possible, and make it ever-increasing.
 
+
+
+
+-- QUERY STRATEGIES
+-- 1. Reduce the code paths (less wotk is performed and avoid contention points):
+--	+ Parameterized queries: utilizing parameterized queries and stored procedure to reduce the cost of generating execution plans.
+--	+ Fully Qualified Names: fully qualifying names of all objects helps remove the code paths required to resolve names
 
 
 
