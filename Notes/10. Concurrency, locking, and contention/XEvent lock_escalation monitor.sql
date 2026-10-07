@@ -9,8 +9,7 @@ IF EXISTS (
 GO
 
 -- Create the Extended Event session
-CREATE EVENT SESSION TrackLockEscalation
-ON SERVER
+CREATE EVENT SESSION TrackLockEscalation ON SERVER
 ADD EVENT sqlserver.lock_escalation
 (
 	SET collect_database_name = 1, collect_statement = 1
@@ -66,3 +65,8 @@ SELECT
 FROM sys.dm_xe_session_targets xet
 JOIN sys.dm_xe_sessions xe ON xe.address = xet.event_session_address
 WHERE xe.name = 'TrackLockEscalation' AND xet.target_name = 'histogram';
+
+
+-- Stop and clean up the session
+ALTER EVENT SESSION TrackLockEscalation ON SERVER STATE = STOP;
+DROP EVENT SESSION TrackLockEscalation ON SERVER;
