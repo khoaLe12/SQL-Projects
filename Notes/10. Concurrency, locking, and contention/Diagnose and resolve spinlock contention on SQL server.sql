@@ -43,16 +43,27 @@
 --	+ Troubleshooting steps:
 --		- Query sys.dm_os_spinlock_stats to determine which spinlock type experiencing the most contention.
 --		- Create a SQL Server Extended Event to trace the backoff events for the most interest of spinlock type.
+--		- Download and attach debug symbol file (sqlservr.pdb) for the appropriate version of SQL Server (helps converting XE result into readable format).
 --		- Analyze the call stacks in the output, measure the backoff events, and identify code paths where the contention lies.
 --		- Example: the call stack with the highest slot bucket count contains 2 code paths: "CMEDCatalogOwner::GetProxyOwnerBySID", "CMEDProxyDatabase::GetOwnerBySID"
 --			-> these code paths perform security-related checks -> for demonstration, run the query with sysadmin priviledges could reduce spinlock contention.
 
-
 -- 4. Resolve spinlock contention:
---	+ 
+--	+ Fully Qualified Names: 
+--		- Removing the need for SQL Server to execute code paths that are required to resolve names.
+--	+ Parameterized Queries: 
+--		- Utilizing parameterized and stored procedure calls.
+--		- It reduces the work needed to generate execution plans.
+--	+ Optimistic Concurrency Control or Optimized Locking:
+--		- Preventing LOCK_HASH contention which is incurred by multiple concurrent threads access the same lock structure/hash bucket.
 
 
 
+
+
+-- Ensure the sqlservr.pdb is in the same directory as the sqlservr.exe
+-- Enable this trace flag to turn on symbol resolution
+DBCC TRACEON(3656, -1);
 
 
 
@@ -70,6 +81,7 @@ ORDER BY spins DESC
 
 
 -- Find the type value of a spinlock type
+-- Ex: LOCK_HASH - 199, SOS_CACHESTORE - 23
 SELECT 
 	map_value, 
 	map_key, 
