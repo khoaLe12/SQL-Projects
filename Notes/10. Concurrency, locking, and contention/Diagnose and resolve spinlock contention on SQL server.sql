@@ -36,5 +36,138 @@
 --		- Spinlock statistics: query the sys.dm_os_spinlock_stats DMV to look for a high number of spins and backoff events over periods of time.
 --		- Wait statistics: starting with SQL Server 2025, query the sys.dm_os_wait_stats using SPINLOCK_EXT wait type.
 --		- SQL Server extended events: used to track call stacks for spinlocks.
--- + Techniques:
---		- 
+--	+ Possible symptoms:
+--		- Periodic spikes in CPU which pushed CPU utilization to nearly 100%.
+--		- Increasing divergence between throughput and CPU consumptions.
+--		- A large number of spins occuring during the interval of high CPU usage.
+--	+ Troubleshooting steps:
+--		- Query sys.dm_os_spinlock_stats to determine which spinlock type experiencing the most contention.
+--		- Create a SQL Server Extended Event to trace the backoff events for the most interest of spinlock type.
+--		- Analyze the call stacks in the output, measure the backoff events, and identify code paths where the contention lies.
+--		- Example: the call stack with the highest slot bucket count contains 2 code paths: "CMEDCatalogOwner::GetProxyOwnerBySID", "CMEDProxyDatabase::GetOwnerBySID"
+--			-> these code paths perform security-related checks -> for demonstration, run the query with sysadmin priviledges could reduce spinlock contention.
+
+
+-- 4. Resolve spinlock contention:
+--	+ 
+
+
+
+
+
+
+-- Query the spinlock stats to find the most interest spinlock type
+SELECT
+	name,
+	collisions,
+	spins,
+	spins_per_collision,
+	sleep_time,
+	backoffs
+FROM sys.dm_os_spinlock_stats
+ORDER BY spins DESC
+
+
+
+-- Find the type value of a spinlock type
+SELECT 
+	map_value, 
+	map_key, 
+	name
+FROM sys.dm_xe_map_values
+WHERE map_value IN ('SOS_CACHESTORE', 'LOCK_HASH', 'MUTEX')
+
+
+
+-- Create the event session that will capture the callstacks to a bucketizer
+IF NOT EXISTS (SELECT * FROM sys.dm_xe_sessions WHERE name = 'spin_lock_backoff')
+BEGIN
+	CREATE EVENT SESSION spin_lock_backoff ON SERVER
+	ADD EVENT sqlos.spinlock_backoff (
+		ACTION(package0.callstack) WHERE 
+			type = 199 -- LOCK_HASH
+			OR TYPE = 23 -- SOS_CACHESTORE
+	)
+	ADD TARGET package0.asynchronous_bucketizer (
+		SET filtering_event_name = 'sqlos.spinlock_backoff',
+		source_type = 1,
+		source = 'package0.callstack'
+	)
+	WITH (
+		MAX_MEMORY = 50 MB,
+		MEMORY_PARTITION_MODE = PER_NODE
+	);
+END
+
+
+
+-- Run the session in 1 minute to measure the contention
+ALTER EVENT SESSION spin_lock_backoff ON SERVER STATE = START;
+WAITFOR DELAY '00:01:00'
+ALTER EVENT SESSION spin_lock_backoff ON SERVER STATE = STOP;
+
+
+
+-- Get the callstacks from the bucketizer target
+SELECT
+	event_session_address,
+	target_name,
+	execution_count,
+	CAST(target_data AS XML)
+FROM sys.dm_xe_session_targets xst
+INNER JOIN sys.dm_xe_sessions xs ON xst.event_session_address = xs.address
+WHERE xs.name = 'spin_lock_backoff';
+
+
+
+-- Clean up the session
+DROP EVENT SESSION spin_lock_backoff ON SERVER;
+
+
+
+-- Example of a backoff output
+SELECT CAST(
+	N'
+	<Root>
+		<BucketizerTarget truncated="0" buckets="256"/>
+
+		<Slot count="35668" trunc="0">
+		  <value>
+			  XeSosPkg::spinlock_backoff::Publish
+			  SpinlockBase::Sleep
+			  SpinlockBase::Backoff
+			  Spinlock&lt;144,1,0&gt;::SpinToAcquireOptimistic
+			  SOS_CacheStore::GetUserData
+			  OpenSystemTableRowset
+			  CMEDScanBase::Rowset
+			  CMEDScan::StartSearch
+			  CMEDCatalogOwner::GetOwnerAliasIdFromSid
+			  CMEDCatalogOwner::LookupPrimaryIdInCatalog CMEDCacheEntryFactory::GetProxiedCacheEntryByAltKey
+			  CMEDCatalogOwner::GetProxyOwnerBySID
+			  CMEDProxyDatabase::GetOwnerBySID
+			  ISECTmpEntryStore::Get
+			  ISECTmpEntryStore::Get
+			  NTGroupInfo::''vector deleting destructor''
+			</value>
+		</Slot>
+
+		<Slot count="752" trunc="0">
+			<value>
+				XeSosPkg::spinlock_backoff::Publish
+				SpinlockBase::Sleep
+				SpinlockBase::Backoff
+				Spinlock&lt;144,1,0&gt;::SpinToAcquireOptimistic
+				SOS_CacheStore::GetUserData
+				OpenSystemTableRowset
+				CMEDScanBase::Rowset
+				CMEDScan::StartSearch
+				CMEDCatalogOwner::GetOwnerAliasIdFromSid CMEDCatalogOwner::LookupPrimaryIdInCatalog CMEDCacheEntryFactory::GetProxiedCacheEntryByAltKey             CMEDCatalogOwner::GetProxyOwnerBySID
+				CMEDProxyDatabase::GetOwnerBySID
+				ISECTmpEntryStore::Get
+				ISECTmpEntryStore::Get
+				ISECTmpEntryStore::Get
+			</value>
+		  </Slot>
+	  </Root>' 
+	AS XML
+)

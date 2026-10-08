@@ -229,14 +229,14 @@ DBCC PAGE (1, 1, 111305, -1);
 
 
 -- Use hash partitioning with a computed column
-USE AdventureWorks2019;
+USE AdventureWorks2025;
 GO
 
 -- 1. Create new filegroup and optionally add 16 files (assumpt number of CPU cores is 16)
-ALTER DATABASE AdventureWorks2019
+ALTER DATABASE AdventureWorks2025
 ADD FILEGROUP AddressFG;
 
-ALTER DATABASE AdventureWorks2019
+ALTER DATABASE AdventureWorks2025
 ADD FILE (
 	NAME = 'AddressFile1',
 	FILENAME = 'D:\0. Khoa\0. SQL Projects\Notes\10. Concurrency, locking, and contention\AddressFile1.ndf',
