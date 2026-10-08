@@ -17,9 +17,24 @@
 -- 2. SPINLOCK CONTENTION:
 --	+ Spinlock contention is one type of concurrency issue observed in real customer workloads on high scale systems.
 --	+ Spinlock contention occurs when multiple threads repeatedly try to acquire the same spinlock.
---	+ Is is considererd problematic when contention introduces significant CPU overhead, which costs on spinning intead of doing useful work.
---	+ This issue is hard to diagnose, it required many deep investigation into possible spinlock contentions.
---	+ 
+--	+ Is is considererd problematic when contention introduces significant CPU overhead.
+--		-> Causing all processing resources to spinning and trying to gain access to lock, instead of progressing the workload.
+--	+ This issue is hard to diagnose, it requires many deep investigations into possible spinlock contentions that truthly detrimental to performance.
+--	+ Some possible indicators of spinlock contention:
+--		- A high number of spins and backoffs are observed for a particular spinlock type.
+--		- Experienced heavy CPU utilization or spikes in CPU consumption
+--		  Ex: high signal waits on SOS_SCHEDULER_YIELD from sys.dm_os_wait_stats DMV.
+--		- The system is experiencing high concurrency.
+--		- The CPU usage and spins are increased disproportionate to throughput.
+--	+ Scenarios that are prone to this issue:
+--		- Name resolution caused by a failure to fully qualify names of objects.
+--		- Contention for lock hash buckets in the lock manager for workloads that frequently access the same lock.
 
---	+ It can be observed on the system with high CPU consumption and large number of spins/backoffs .
---	+ 
+-- 3. DIAGNOSE SPINLOCK CONTENTION:
+--	+ Primary tools:
+--		- Performance Monitor: look for high CPU conditions or divergence between between throughput and CPU consumption.
+--		- Spinlock statistics: query the sys.dm_os_spinlock_stats DMV to look for a high number of spins and backoff events over periods of time.
+--		- Wait statistics: starting with SQL Server 2025, query the sys.dm_os_wait_stats using SPINLOCK_EXT wait type.
+--		- SQL Server extended events: used to track call stacks for spinlocks.
+-- + Techniques:
+--		- 
