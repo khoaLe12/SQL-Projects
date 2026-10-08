@@ -16,6 +16,15 @@
 
 
 
+-- DIAGNOSING AND TROUBLESHOOTING
+-- 1. Monitor CPU consumption, I/O disk operations, memory usage, throughput (via transactions/seconds), ...
+--	+ Low CPU utilization and high throughput, increasing latch wait times -> latch contention.
+--	+ CPU increasing disproportionate to throughput, high number of spins and backoffs -> possible spinlock contention.
+--	+ High lock waits count -> lock contention.
+-- 2. Inspect workload of high concurrency system
+--	+ Many queries against a single table concurrently.
+
+
 -- If a query is slow, go check
 -- 1. Indexes
 --	+ If the query is missing indexes
