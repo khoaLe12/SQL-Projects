@@ -1,10 +1,13 @@
 ﻿
 -- INDEX ARCHITECTURE AND DESIGN
+
 -- 1. Index design is one of the most important strategies to improve query performance.
 --	+ A lack of indexes, over-indexing, or poorly designed indexes are common source of performance problems.
 --	+ Designing the right indexes requires balancing query speed, index maintenance cost, and storage overhead.
+
 -- 2. There are multiple index types with different storage formats, each suitable for specific scenarios.
 --	+ Choosing the right index requires careful analysis of database characteristic, applications, and frequently used queries.
+
 -- 3. Index design tasks:
 --	+ Understand database and application characteristics:
 --		- OLTP systems with frequent modifications benefit from a few narrow rowstore indexes.
@@ -17,12 +20,14 @@
 --	+ Evaluate index options:
 --		- Data compression (row/page) improves I/O but increases CPU usage.
 --		- Lower fill factor reduces page splits but increases storage usage.
+
 -- 4. Index design considerations:
 --	+ Over-indexing impacts performance of INSERT, UPDATE, DELETE, and MERGE operations.
 --	+ Batch modifications (multi-row statements) reduce index maintenance overhead.
 --	+ Write queries with SARGable predicates to leverage indexes.
 --	+ Use covering indexes with included columns to avoid lookups, but avoid excessive included columns.
 --	+ Keep index keys short, especially for clustered indexes.
+
 -- 5. Index placement on filegroups/partitions:
 --	+ By default, indexes reside in the same filegroup of the base table.
 --	+ Moves indexes to other filegroups for performance:
@@ -31,6 +36,7 @@
 --	+ Partition tables and indexes across filegroups:
 --		- Makes large databases manageable (e.g., OLAP ETL).
 --		- Enables partition elimimation and parallel query processing.
+
 -- 6. Clustered index design guidelines:
 --	+ Desirable properties:
 --		- Narrow: small key length reduces storage and overhead.
@@ -47,6 +53,7 @@
 --			+ IN_ROW_DATA (always present).
 --			+ LOB_DATA (if large object columns exist).
 --			+ ROW_OVERFLOW_DATA (if total variable-length columns exceed 8060 bytes).
+
 -- 7. Nonclustered index design guidelines:
 --	+ Designed to improve performance of frequent queries.
 --	+ Architecture:
@@ -55,9 +62,11 @@
 --		- Row locators point to base table rows (heap or clustered key).
 --		- One row in sys.partitions per partition (index_id > 1).
 --		- Allocation units: IN_ROW_DATA, LOB_DATA, ROW_OVERFLOW_DATA as needed.
+
 -- 8. Included columns in nonclustered indexes:
 --	+ Cover queries to avoid lookups.
 --	+ Balance performance gains against increased modification cost and storage usage.
+
 -- 9. Memory-optimized hash index:
 --	+ Array of hash buckets (8 bytes each) pointing to linked lists of key entries.
 --	+ Each entry stores key value and row address, linked to next entry in the bucket.
@@ -66,6 +75,7 @@
 --		- Too many buckets → wasted memory.
 --	+ Best for exact maches (exact values of all key columns), small range search, and table has no dulicates.
 --	+ Poor choice for columns with many duplicate values.
+
 -- 10. Memory-optimized nonclustered index (Bw-tree):
 --	+ Uses a lock-free, latch-free Bw-tree structure.
 --	+ Components: page map (PidMap), page allocator (PidAlloc), and linked pages.
@@ -75,6 +85,8 @@
 --		- Page split: creates two new leaf page, updates mapping table, and adjust parent pointers.
 --		- Page merge: triggered when a page is <10% full and can merge with a contiguous sibling.
 --			+ Redirects pointers, rebuilds parent page, updates mapping table, and allocates a new merged leaf page.
+
+
 
 
 

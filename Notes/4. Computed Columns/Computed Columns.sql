@@ -1,17 +1,16 @@
+-- COMPUTED COLUMNS
+--	+ A computed column defined by an expression whose inputs are columns from the same table, producing scalar value.
+--	+ A computed column is virtual by default (not physically stored), unless explicitly marked as PERSISTED.
+--	+ Computed columns cannot be used in DEFAULT, FOREIGN KEY, or CHECK constraint definitions, nor can they be declared with NOT NULL (unless PERSISTED and guaranteed non-null).
+--	+ A computed column cannot be direct the target of an INSERT/UPDATE statements; its value is derived automatically.
+--	+ Indexes can be created on computed columns only if certain requirements are met: the expression must be deterministic, precise, and conform to rules regarding ownership, data type, and SET options (see "Indexes on computed columns")
+--	+ A computed column expression is deterministic if it always return the same result for a specified set of input
+--	+ A computed column expression is precise if it does not involve FLOAT or REAL data types, and is not defined using expressions of those types.
+
+
+
 USE SQLTestDB;
 GO
-
-
-
-
--- COMPUTED COLUMNS
--- 0. A computed column defined by an expression whose inputs are columns from the same table, producing scalar value.
--- 1. A computed column is virtual by default (not physically stored), unless explicitly marked as PERSISTED.
--- 2. Computed columns cannot be used in DEFAULT, FOREIGN KEY, or CHECK constraint definitions, nor can they be declared with NOT NULL (unless PERSISTED and guaranteed non-null).
--- 3. A computed column cannot be direct the target of an INSERT/UPDATE statements; its value is derived automatically.
--- 4. Indexes can be created on computed columns only if certain requirements are met: the expression must be deterministic, precise, and conform to rules regarding ownership, data type, and SET options (see "Indexes on computed columns")
--- 5. A computed column expression is deterministic if it always return the same result for a specified set of input
--- 6. A computed column expression is precise if it does not involve FLOAT or REAL data types, and is not defined using expressions of those types.
 
 
 

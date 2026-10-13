@@ -60,6 +60,10 @@
 --		- S1 the tries to update R2 (blocked by S2).
 --		- Result: cycle dependency → deadlock.
 
+
+
+
+
 -- Queries to Capture Deadlocks:
 
 -- From system_health_ring_buffer (in-memory):

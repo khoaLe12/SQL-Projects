@@ -1,17 +1,21 @@
 ﻿
 
--- USER-DEFINED FUNCTIONS (UDFs)
+-- USER DEFINED FUNCTIONS (UDFs)
+
 -- 1. Definition:
 --	+ A UDF is a predefined block of logic/code that can be reused multiple times.
 --	+ Similar to programming language functions: accepts parameters, perform actions, and return results.
 --	+ Stored as a database object; its compiled plan can be cached and reused for faster execution.
 --	+ A UDF cannot call a stored procedure, but can can call extended stored procedures or other functions.
+
 -- 2. Types of UDFs:
 --	+ T-SQL functions → best for data-access intensive logic.
 --	+ CLR functions → best for computational tasks, string manipulation, and complex business logic.
+
 -- 3. Usage:
 --	+ Can be invoked in SELECT, WHERE, or APPLY clause.
 --	+ Helps reduce network traffic by performing more actions in a single batch.
+
 -- 4. Side effects:
 --	+ UDFs cannot produce side effect (permanent changes outside their scope).
 --	+ Disallowed operations include:
@@ -19,6 +23,7 @@
 --		- Using non-local cursors.
 --		- Sending emails, catalog modifications, or returning result sets directly.
 --	+ Nondeterministic side-effecting functions (MEWID(), NEWSEQUENTIALID(), RAND(), TEXTPTR()) cannot be called inside UDFs.
+
 -- 5. Valid statements inside UDFs:
 --	+ DECLARE (local variables, cursors).
 --	+ SET (assign values to local variables).
@@ -26,33 +31,43 @@
 --	+ control-of-flow statements (except TRY...CATCH).
 --	+ UPDATE, INSERT, DELETE (only on local table variables).
 --	+ EXECUTE (extended stored procedure).
+
 -- 6. Schema-bound functions:
 --	+ Created with WITH SCHEMABINDING option.
 --	+ Bind referenced objects (tables, views, other UDFs).
 --	+ Prevents altering or dropping referenced objects.
+
 -- 7. Determinism:
 --	+ Deterministic → always returns the same result for the same inputs.
 --	+ Nondeterministic → may return different results for the same inputs.
+
 -- 8. Indexing requirements:
 --	+ To create indexes on computed columns or views based on UDFs, the function must be deterministic and schema-bound.
+
 -- 9. Scalar UDF inlining:
 --	+ Optimizes scalar UDFs by substituting expression directly into queries.
 --	+ Eliminates repeated context switching between caller and function.
 --	+ Enabled with WITH INLINE = ON or database option TSQL_SCALAR_UDF_INLINING = ON.
 --	+ Can be disabled with OPTION (USE HINT('DISABLE_TSQL_SCALAR_UDF_INLINING')).
 --	+ Requirements for inlining: https://learn.microsoft.com/en-us/sql/relational-databases/user-defined-functions/scalar-udf-inlining?#inlineable-scalar-udf-requirements
+
 -- 10. Scalar functions:
 --	+ Return a single value of a defined data type.
 --	+ Inline scalar function → single statement returning a scalar value.
 --	+ Multistatement scalar function → multiple statements returning a single value.
 --	+ Return type can be any data type except text, ntext, image, cursor, timestamp.
+
 -- 11. Table-valued functions (TVFs):
 --	+ Return a table data type.
 --	+ Inline TVF → defined by a single SELECT statement (no function body).
 --	+ Multistatement TVF → multiple statements build and return a table variable.
+
 -- 12. System functions:
 --	+ Built-in functions provided by SQL Server.
 --	+ Nondeterministic system functions can be used in UDFs, except NEWID(), NEWSEQUENTIALID(), RAND(), TEXTPTR().
+
+
+
 
 
 

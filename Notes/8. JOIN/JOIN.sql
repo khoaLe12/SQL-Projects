@@ -1,11 +1,13 @@
 ﻿
-
 -- JOIN
+
 -- 1. Definition:
 --	+ Joins are fundamental operations used to combine data from two or more tables into a single result set.
+
 -- 2. SQL Server implementation:
 --	+ Logical join operators → defined by T-SQL syntax.
 --	+ Physical join operators → actual algorithms chosen by the query optimizer to execute joins.
+
 -- 3. Logical join types:
 --	+ INNER JOIN → returns rows where both sides satisfy the join condition.
 --	+ LEFT OUTER JOIN → returns all rows from the left table; unmatched rows have NULLs on the right.
@@ -14,6 +16,7 @@
 --	+ CROSS JOIN → Cartesian product; every row from left table joined with every row from right table.
 --	+ SEMI JOIN → returns rows from the left table if a match exists in the right table (no duplicates, no right-side columns). Implemented with EXISTS or IN.
 --	+ ANTI SEMI JOIN → returns rows from the left table where no match exists in the right table. Implemented with NOT EXISTS, NOT IN, or LEFT JOIN + IS NULL.
+
 -- 4. Physical join algorithms:
 --	+ Nested Loops Join:
 --		- Iterates outer input rows, probing inner input for matches.
@@ -39,6 +42,10 @@
 --		- Decision based on row count threshold:
 --			* If build input is small → switch to Nested Loops.
 --			* If build input exceeds threshold → continue with Hash Join.
+
+
+
+
 
 
 

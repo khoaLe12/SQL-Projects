@@ -1,4 +1,6 @@
 
+-- Collations provide sorting rules, case, and accent sesitivity properties for character data types.
+-- Unicode is a standard for mapping code points to characters.
 
 
 -- View collation settings of a server

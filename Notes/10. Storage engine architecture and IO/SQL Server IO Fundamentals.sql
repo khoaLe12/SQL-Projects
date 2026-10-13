@@ -1,5 +1,6 @@
 ﻿
 -- SQL SERVER I/O FUNDAMENTALS
+
 -- 1. Definition
 --  + Disk I/O is a core operation of the Database Engine; understanding it is key to performance tuning.
 --  + Intensive disk I/O consumes resources, takes time, and can degrade performance.
@@ -8,6 +9,7 @@
 --      - I/O is typically asynchronous, allowing threads to continue processing.
 --      - All I/Os are issued in the calling thread; the affinity I/O mask can bind I/O to specific CPUs.
 --      - Scatter-gather I/O allows to process multiple page I/Os in a single operation, reducing physical requests.
+
 -- 2. Long I/O Requests
 --  + Requests lasting ≥15 seconds are logged with event MSSQLSERVER_833.
 --  + A long I/O message may indicate a permanently blocked (lost) I/O or not yet complete.
@@ -18,7 +20,10 @@
 --      - Hardware/driver issues, antivirus/security software interference.
 --      - Inefficient queries (missing indexes/statistics).
 
+
+
 -- LONG I/O REQUESTS: ISSUES AND SOLUTIONS
+
 -- 1. Troubleshooting methodology:
 --  + Bottleneck threshold: I/O consistently >10-15 ms.
 --  + Step 1: Verify SQL Server reports slow I/O
@@ -37,6 +42,7 @@
 --      - Use Perfmon, DMVs, XEvents, SQL Trace, DTA, error logs.
 --      - Find queries causing heavy I/O and their wait types.
 --      - Solution: tune queries, increase max server memory (better caching), improve hardware throughput.
+
 -- 2. Common I/O-related wait types:
 --  + PAGEIOLATCH_EX: waiting for exclusive latch (page being written).
 --  + PAGEIOLATCH_SH: waiting for shared latch (page being read).
@@ -46,6 +52,7 @@
 --  + ASYNC_IO_COMPLETION: bulk insert, undo file reads, backup reads.
 --  + IO_COMPLETION: non-buffer I/O (tempdb spills, eager spools, log block reads, snapshot copy-on-write, file close/uncompression).
 --  + BACKUPIO: backup waiting for data or buffer availability.
+
 -- 3. Affinity I/O Mask
 --  + Advanced option; default Windows affinity is usually best.
 --  + Binds SQL Server disk I/O to specific CPUs.
@@ -53,6 +60,7 @@
 --  + Rightmost bit = CPU0, next bit = CPU1, etc.
 --  + Must coordinate with affinity mask option; no CPU can be in both.
 --  + Configure via sp_configure; set mask = 0 for default.
+
 -- 4. Antivirus Configuration
 --  + Exclude SQL Server executables:
 --      - sqlservr.exe, sqlagent.exe, sqlbrowser.exe, SQLDumper.exe.

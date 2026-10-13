@@ -1,5 +1,6 @@
 
 -- THREAD AND TASK ARCHITECTURE
+
 -- 1. Request:
 --	+ A request is the logical representation of a query or batch.
 --	+ Each request can be assigned to:
@@ -8,6 +9,7 @@
 --		- Multiple tasks (parallel execution).
 --			* Parallel requests have one parent task and multiple child tasks.
 --			* The parent coordinates child tasks and execute serial portions of the plan.
+
 -- 2. Task:
 --	+ A task is a unit of work containing instructions to execute.
 --	+ It tracks the request's state and accumulative waits.
@@ -20,6 +22,7 @@
 --		- SUSPENDED: has a worker, waiting on resources/events.
 --		- DONE: completed.
 --		- SPINLOOP: stuck in a spinlock.
+
 -- 3. Workers / Worker Threads:
 --	+ A worker thread is SQL Server's logical representation of an OS thread.
 --	+ Managed by the SQL Server scheduler (SOS scheduler).
@@ -30,6 +33,7 @@
 --		- RUNNING: executing (preemptive or non-preemptive).
 --		- RUNNABLE: ready to run.
 --		- SUSPENDED: waiting for an event signal.
+
 -- 4. Schedulers:
 --	+ SQL Server uses SOS scheduler to manage workers.
 --	+ Each scheduler maps to a CPU.
@@ -38,6 +42,7 @@
 --		- Must yield after quantum or when its task is finished.
 --		- Maximizes CPU access and reduces blocking on resources (I/O, remote calls, etc.,).
 --	+ Threads are distributed across CPUs in round-robin fashion.
+
 -- 5. Best Practices (servers >64 CPUs):
 --	+ Use ALTER SERVER CONFIGURATION with SET PROCESS AFFINITY to bind processors.
 --	+ Preallocate log file space to avoid auto-growth.
@@ -45,6 +50,7 @@
 --	+ Set maximum worker threads (starting point: ~7 x CPU count).
 --	+ Avoid SQL Trace/Profiler in production.
 --	+ Configure tempdb with multiple data files (generally one per CPU core).
+
 -- 6. How SQL Server Uses Threads:
 --	+ Each SSMS query window = seperate session.
 --	+ Each ADO.NET SqlConnection  = seperate session.
@@ -53,6 +59,8 @@
 --	+ Queries may spawn multiple tasks/threads if parallel execution is chosen.
 --		- Each batch has a sql_handle which refer to its sql/statement text, and query_hash generated from that text.
 --		- For each batch, its plans are compiled or reused from cache, identified by plan_handle and query_plan_hash.
+
+
 
 
 SELECT

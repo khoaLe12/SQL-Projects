@@ -1,5 +1,6 @@
 ﻿
 -- PAGE AND EXTENT ARCHITECTURE
+
 -- 1. Pages:
 --	+ A page is the fundamental unit of data storage, each 8 KB in size.
 --	+ Disk I/O operations against data files are performed at the page level.
@@ -25,11 +26,13 @@
 --		- Overflow data can be moved back if row size shrinks.
 --		- Row-overflow storage increases I/O; avoid it by normalizing schema or splitting columns into other tables.
 --		- Use sys.dm_db_index_physical_stats to identify tables and indexes using row-overflow or large object storage.
+
 -- 2. Extents: 
 --	+ An extent is a collection of 8 contiguous pages (64 KB).
 --	+ Types:
 --		- Uniform: owned entirely by one object.
 --		- Mixed: shared by up to 8 objects, each owning individual pages.
+
 -- 3. System pages:
 --	+ GAM and SGAM pages track extent allocation, and the type of extent being used:
 --		- GAM: ~64,000 extents per GAM page.
@@ -38,10 +41,12 @@
 --	+ IAM pages map extents used by allocation units within a GAM interval.
 --		- One IAM page per allocation unit per partition per ~64,000 extents.
 --	+ BCM and DCM pages track extents modified since last log/full backup.
+
 -- 4. Data file structure (simplified):
 --	+ File header → PFS → GAM → SGAM → BCM → DCM → interval of <1011 extents → PFS> → ~64,000 extents → GAM → SGAM → <repeated ...>
 --	+ Partition 1 → Data File → Allocation unit 1 → IAM page → interval of <~64,000 extents → IAM page>
 --							  → Allocation unit 2 → IAM page → interval of <~64,000 extents → IAM page>
+
 -- 5. Reading pages:
 --	+ Physical read: copies pages from disk into buffer cache.
 --	+ Logical read: reads pages directly from buffer cache (no I/O).
@@ -51,6 +56,7 @@
 --	+ Advanced scanning allows multiple queries to share a single table scan:
 --		- Concurrent scans are merged into one physical scan.
 --		- Late-arriving scans join the current scan and wrap around to complete.
+
 -- 6. Writing pages:
 --	+ Logical write: modified a page in buffer cache, the page is marked as dirty.
 --	+ Physical write: writes/flushes dirty pages from cache to disk.
@@ -63,6 +69,7 @@
 --		- Lazy writer: flushes dirty pages and removes infrequently used pages in buffer cache.
 --		- Eager writer: writes new pages in parallel especially for minimally logged operations such as bulk operations.
 --		- Checkpoint: periodically flushes all dirty pages; can be triggered manually with CHECKPOINT.
+
 
 
 

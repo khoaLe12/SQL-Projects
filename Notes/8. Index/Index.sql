@@ -16,16 +16,6 @@
 -- 5C: HEAP MAINTENANCE
 
 
-USE SQLTestDB;
-GO
-
-
-
--- LIST ALL INDEXES OF A SPECIFIC TABLE
-EXEC sp_helpindex 'dbo.Table_primarykey'
-
-
-
 
 
 -- 1A: TYPES OF INDEX
@@ -149,6 +139,15 @@ EXEC sp_helpindex 'dbo.Table_primarykey'
 -- 3. Provides a lighter alternative to full index rebuilds.
 
 
+
+
+
+USE SQLTestDB;
+GO
+
+
+-- LIST ALL INDEXES OF A SPECIFIC TABLE
+EXEC sp_helpindex 'dbo.Table_primarykey'
 
 
 
