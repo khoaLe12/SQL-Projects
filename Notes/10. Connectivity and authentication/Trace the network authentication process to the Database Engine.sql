@@ -30,6 +30,7 @@
 
 
 -- Find host that establishes most connections
+-- Can be used to compare the host throughput and its number of connections which used to identify if connection pool is limit
 SELECT 
 	c.client_net_address, 
 	s.host_name, 

@@ -22,7 +22,8 @@
 --	+ CPU increasing disproportionate to throughput, high number of spins and backoffs -> possible spinlock contention.
 --	+ High lock waits count -> lock contention.
 -- 2. Inspect workload of high concurrency system
---	+ Many queries against a single table concurrently.
+--	+ Identify if there are many queries against a single table concurrently.
+--	+ Number of connections one SQL Server is limit while there are much higher number of requests on BE server (requests are forced to be wait) -> connection pool size could be limit.
 
 
 -- If a query is slow, go check
