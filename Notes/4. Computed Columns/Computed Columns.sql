@@ -1,3 +1,4 @@
+
 -- COMPUTED COLUMNS
 --	+ A computed column defined by an expression whose inputs are columns from the same table, producing scalar value.
 --	+ A computed column is virtual by default (not physically stored), unless explicitly marked as PERSISTED.

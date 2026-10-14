@@ -2,27 +2,32 @@
 
 -- TEMPDB SYSTEM DATABASE
 -- 1. Purpose:
---	Tempdb is a shared global resource used to store temporary data, including:
+--	Tempdb is a shared global resource used to store temporary data on disk, including:
 --		+ User objects: temporary tables and indexes, temporary stored procedures, large variables, table variables, results of table-valued functions, cursors.
 --		+ Internal objects: work tables for spool operations, such as intermediate sort results for GROUP BY, ORDER BY, UNION queries; hash join/hash aggregation work files; and index build/maintenance operations (e.g., SORT_IN_TEMPDB).
 --		+ Version stores: row versions generated during data modification when using row versioning-based isolation levels (e.g., READ COMMITTED SNAPSHOT or SNAPSHOT).
+
 -- 2. File structure:
 --	Tempdb consists of:
 --		+ Primary data file: tempdev (tempdb.mdf).
---		+ Secondary data files: tempdb_mssql_#.ndf (temp1, temp2, etc.).
+--		+ Secondary data files: temp# (tempdb_mssql_#.ndf).
 --		+ Log file: templog (templog.ldf).
---	By default, SQL Server creates tempdb with a single data file.
+--	By default, SQL Server creates tempdb with a single data file and a single log file.
+
 -- 3. File contents:
 --	Each data file contains metadata pages and data pages.
 --	Metadata tracks allocation and usage of space/pages.
+
 -- 4. Concurrency:
 --	Tempdb uses latch queues on allocation pages (PFS, GAM, SGAM) for each data file to serialize concurrent access.
 --	Excessive contention on these latches leads to "tempdb allocation contention" or "page latch waits", observed as PAGELATCH_* waits.
 --	These allocation pages are cached in memory, so the contention is in-memory synchronization, not disk I/O.
 --	That's why the wait type is PAGELATCH_*, not PAGEIOLATCH_* (which indicates waiting for physical disk I/O).
+
 -- 5. Detection:
 --	Use DMVs such as sys.dm_os_waiting_tasks and sys.dm_os_wait_stats to identify waiting threads and reasons.
 --	DBCC SQLPERF can reset wait statistics for monitoring.
+
 -- 6. Mitigation strategies:
 --		+ Add multiple files to increase the number of latch queues.
 --			- Recommended: start with one file per logical processor up to 8, then add more only if necessary.
@@ -178,9 +183,9 @@ SELECT
 	wt.wait_type AS [wait type],
 	ISNULL(RTRIM(CAST(wt.wait_duration_ms / 1000.0 AS CHAR)) + 's', '') AS [wait duration],
 	wt.resource_description AS [resource description], -- tempdb file on which the request is waiting
-	t.task_local_storage AS [task local storage],
+	--t.task_local_storage AS [task local storage],
 
-	-- Blocking request infor
+	-- Blocking request info
 	br.session_id AS [blocking session],
 	br.request_id AS [blocking request],
 	br.status AS [blocking request status],
