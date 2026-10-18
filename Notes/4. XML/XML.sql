@@ -1,6 +1,6 @@
 ﻿
-
 -- XML DATA
+
 -- 1. Overview:
 --	+ SQL Server provides native support for XML data.
 --	+ XML can be stored in an xml data type column or variable.
@@ -14,20 +14,24 @@
 --	+ Supports transactional modifications (insert/update/delete sections) of XML data.
 --	+ Validation against XML schemas guarantees format correctness.
 --	+ More flexible than relational structures when schemas change frequently.
+
 -- 2. Storage options:
 --	+ Native xml data type (fast parsing via PSVI).
 --	+ Annotated schema (AXSD) → decomposes XML into relational columns (XML view).
 --	+ Large object storage (nvarchar(max), varbinary(max)) → stores identical copy of XML.
+
 -- 3. Typed XML:
 --	+ Associated with an XML schema collection.
 --	+ Schema can be bound to variables, parameters, or columns.
 --	+ Provides validation constraints.
 --	+ Stores type information for attributes/elements → improves query percision.
 --	+ Facets: DOCUMENT (exactly one top-level element) vs CONTENT (zero/many top-level elements or text nodes).
+
 -- 4. Encoding:
 --	+ XML data stored/returned in UTF-16.
 --	+ If source encoding is not Unicode and not declared, parsing errors may occur.
 --	+ Explicit encoding can be declared in the XML header.
+
 -- 5. XML indexes:
 --	+ Improve query performance but add maintenance overhead.
 --	+ Primary XML index: shredded representation (row per node).
@@ -38,14 +42,17 @@
 --		- VALUE index → speeds up value-based queries (full path is not specified or using wildcards, query with unkonw element/attribute names).
 --		- PROPERTY index → speeds up queries using value() method in the SELECT statement.
 --	+ Selective XML indexes → index only chosen paths/nodes for efficiency.
+
 -- 6. XML Compression:
 --	+ Compress XML data using Xpress algorithm.
 --	+ XML indexes can also use data compression.
+
 -- 7. XML Schemas (XSD):
 --	+ XML schema collections hold multiple schemas for validation.
 --	+ Define metadata and data type information for XML instances.
 --	+ Components: ELEMENT, ATTRIBUTE, SIMPLE TYPE, COMPLEX TYPE, ATTRIBUTEGROUP, MODELGROUP.
 --	+ SQL Server stores schema components, not the XML itself.
+
 -- 8. FOR XML:
 --	+ Converts rowset results into XML.
 --	+ Modes:
@@ -62,6 +69,7 @@
 --		- BINARY BASE64 → encode binary data.
 --		- XSINIL → create xsi:nill for NULL values.
 --		- ABSENT → omit NULL values (default).
+
 -- 9. OPENXML:
 --	+ Parses in-memory XML into rowsets.
 --	+ Uses sp_xml_preparedocument / sp_xml_removedocument for handling DOM tree of document.
@@ -72,12 +80,14 @@
 --	+ Mapping options:
 --		- Flags: 1 (attribute-centric), 2 (element-centric), 3 (both), 8 (overflow), etc.
 --		- ColPattern in WITH clause for flexible mapping.
+
 -- 10. XML DML:
 --	+ Extensions to XQuery for modifying XML.
 --	Keywords:
 --		- insert → add nodes (elements, attributes, comments, text, etc.).
 --		- delete → remove nodes/attributes.
 --		- replace value of → update node/attribute values (simple types only).
+
 -- 11. XML Data Type Methods
 --	+ SQL Server provides built-in methods on the xml data type to query and manipulate XML instances using XQuery.
 --	Methods:
@@ -92,6 +102,7 @@
 --	+ nodes(XQuery) AS Table(Column) → shreds XML into relational rowsets.
 --		- Each row contains a logical copy of the XML instance with context node identified by XQuery.
 --		- Typically used with CROSS APPLY, not standalone SELECT.
+
 -- 12. XQuery and XPath
 --	+ XQuery is the language used to query and construct XML in SQL Server.
 --	+ Based on XPath, but extended with:
@@ -102,7 +113,7 @@
 --		- sql:column() → bind relational column values into XML.
 --		- sql:variable() → bind SQL variables into XML.
 --	+ Structure:
---		- Prolog → declaration environment for query (e.g., namespaces)/
+--		- Prolog → declaration environment for query (e.g., namespaces)
 --		- Body → sequence of expressions to query or transform XML.
 
 
@@ -220,7 +231,8 @@ GO
 CREATE OR ALTER PROCEDURE [dbo].[ProcX] @xml XML(XSD2) AS;
 GO
 
-IF OBJECT_ID('dbo.XMLDemo', 'U') IS NOT NULL DROP TABLE dbo.XMLDemo
+IF OBJECT_ID('dbo.XMLDemo', 'U') IS NOT NULL 
+	DROP TABLE dbo.XMLDemo
 CREATE TABLE dbo.XMLDemo (
     ID Int Identity(1,1) NOT NULL PRIMARY KEY,
     Orders XML (DOCUMENT XSD1) NOT NULL DEFAULT CAST(N'<?xml version="1.0" encoding="UTF-16"?><root xmlns="schema1" ImportID="IMP001"></root>' AS XML),
@@ -299,11 +311,17 @@ GO
 
 SELECT DepartmentID, Name, GroupName, ModifiedDate 
 FROM HumanResources.Department
+FOR XML RAW, TYPE
+GO
+
+SELECT DepartmentID, Name, GroupName, ModifiedDate 
+FROM HumanResources.Department
 FOR XML AUTO, TYPE
 GO
 
 DECLARE @s varchar(MAX) = 
-N'<products>
+N'
+<products>
   <product id="1">
     <name>Café au lait</name>
     <price>2.50</price>
@@ -320,14 +338,14 @@ GO
 
 SELECT BulkColumn AS [binary data stream]
 FROM OPENROWSET(
-	BULK 'D:\Projects\SQL-Projects\Notes\2. XML\SampleData1.txt',
+	BULK 'D:\Projects\SQL-Projects\Notes\4. XML\SampleData1.txt',
 	SINGLE_BLOB
 ) AS x
 GO
 
 SELECT CONVERT(XML, BulkColumn, 2) AS [xml data with DTD]
 FROM OPENROWSET(
-	BULK 'D:\Projects\SQL-Projects\Notes\2. XML\SampleData2.txt',
+	BULK 'D:\Projects\SQL-Projects\Notes\4. XML\SampleData2.txt',
 	SINGLE_BLOB
 ) AS x
 GO
@@ -397,7 +415,7 @@ SELECT
 		WHEN 'R' THEN N'PROPERTY'
 		WHEN 'V' THEN N'VALUE'
 		ELSE N''
-	END AS [seconary index type]
+	END AS [secondary index type]
 FROM sys.xml_indexes;
 GO
 
@@ -594,13 +612,13 @@ BEGIN
 	INSERT [dbo].[CustomersDemo]
 	SELECT * 
 	FROM OPENXML(@docHandle, N'/ROOT/Customers')
-	WITH Customers;
+	WITH [dbo].[CustomersDemo];
 
 	-- Use OPENXML to provide rowset consisting of order data.
 	INSERT [dbo].[OrdersDemo]
 	SELECT *
 	FROM OPENXML(@docHandle, N'//Orders')
-	WITH Orders;
+	WITH [dbo].[OrdersDemo];
 
 	-- Remove the internal representation of the XML document.
 	EXEC sp_xml_removedocument @docHandle
@@ -891,7 +909,8 @@ DECLARE @x XML = '<Somedate date="2002-01-01Z">2002-01-01Z</Somedate>';
 DECLARE @d Nvarchar(12) = '2002-01-01Z';
 SELECT @x.exist('/Somedate[(@date cast as xs:date?) eq xs:date("2002-01-01Z")]') AS [exist eq],
 	@x.exist('/Somedate[(text()[1] cast as xs:date ?) = xs:date(sql:variable("@d"))]') AS [exist =],
-	@x.exist('/Somedate[not(OtherElements)]') AS [exist not]
+	@x.exist('/Somedate[not(OtherElements)]') AS [exist not],
+	@x.query('/Somedate[not(OtherElements)]')
 GO
 
 DECLARE @x XML = 
@@ -914,9 +933,10 @@ DECLARE @x XML =
 SELECT
 	@x AS [original XML],
 	T.c.query('/') AS [nodes - logical copy of XML],
-	T.c.query('..') AS [nodes location context - direct parent accessor],
-	T.c.query('.') AS [nodes location context],
-	T.c.query('*') AS [nodes logical context - all child elements]
+	T.c.query('..') AS [nodes Location context - direct parent accessor Root2],
+	T.c.query('*') AS [nodes Location context - all child elements],
+	T.c.query('.') AS [nodes Location context - first location],
+	T.c.query('../*') AS [nodes Location context - all child elements of parent Root2]
 FROM @x.nodes('/Root1/Root2/Location') AS T(c)
 GO
 

@@ -1,7 +1,7 @@
 -- =====================================================
 -- Create Function fn_convertnumericlsntobinary Template
 -- =====================================================
-USE AdventureWorks2014
+USE AdventureWorks2025
 GO
 
 CREATE OR ALTER FUNCTION dbo.fn_convertnumericlsntobinary(

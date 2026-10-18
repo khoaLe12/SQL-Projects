@@ -1,4 +1,4 @@
-
+﻿
 -- CHANGE DATA CAPTURE (CDC)
 -- 1. It is a built-in feature to track data changes made by DML operation.
 
@@ -20,7 +20,7 @@
 --	+ Using functions sys.sp_cdc_disable_db and sys.sp_cdc_disable_table to disable the feature.
 
 -- 6. Each source table that is enabled with change data capture is constructed that.
---	+ Each table can have maximum of 2 associated capture instances, which named by format <schema name_table name> of the tracked table.
+--	+ Each table can have maximum of 2 associated capture instances, which named by format <[chema name]_[table name]> of the tracked table.
 --	+ The capture instance consists of a change table, metadata tables and up to 2 query functions which are created in the cdc schema.
 
 -- 7. Metadata describes configurations of the instance 
@@ -28,11 +28,13 @@
 --	+ Metadata can be retrieved using the stored procedure sys.sp_cdc_help_change_data_capture.
 --	+ The configured values of capture job (used to scan log) are stored in msdb.dbo.cdc_jobs (maxtrans, maxscans, continuous, pollinginterval)
 --		+ maxtrans: specify the maximum number of transactions that can be processed in a single scan cycle.
---		+ maxscans: specify the maximum number of scan cycles to be executed before performing return or waitfor action
---		+ continuos: 
+--		+ maxscans: specify the maximum number of scan cycles to be executed before performing return or waitfor action.
+--		+ continuos: controls whether CDC runs continuosly or as a one-time job.
+--		+ pollinginterval: number of seconds CDC wait between scan rounds.
+--	+ maxtrans 500, maxscans 10, continuous 1, pollinginterval 5 → CDC can process up to roughly 500 * 10 transactions per rolling cycle, then wait 5 seconds before scanning the log again.
 
 -- 8. Change table records change informations
---	+ The table is named by appending _CT to the instance name know as <instance name_CT>.
+--	+ The table is named by appending _CT to the instance name know as <[instance name]_CT>.
 --	+ A change table contains first 5 metadata columns, and identified captured columns from the source table.
 --	+ The metadata columns identify and interpret the change activity
 --		+ Column __$start_lsn stores the commit log sequence number (LSN) of the change.
@@ -41,8 +43,8 @@
 --		+ Column __$update_mask works as bit mask to identify which columns has changed in the operation (1=value is changed, 0=no change)
 --	+ Each insert/delete operation corresponding to a single row within the change table, captured the data after insertion and data before deletion.
 --	+ Each update operation populates 2 rows, one for original data and the other for updated data
---	+ To query changes from change table, use the built-in function name <fn_cdc_get_all_changes_instance name>.
---	+ To query net changes of instance (if supported), use the function <fn_cdc_get_net_changes_instance name>.
+--	+ To query changes from change table, use the built-in function name <fn_cdc_get_all_changes_[instance name]>.
+--	+ To query net changes of instance (if supported), use the function <fn_cdc_get_net_changes_[instance name]>.
 --	+ The netchanges merges changes and return the final contents for each modified row within validity interval
 
 -- 9. The change data capture cleanup process periodically removes expired data (data that out of validity interval, by the default the last 3 days)
@@ -112,6 +114,12 @@ WHERE [object_id] = OBJECT_ID('Person.BusinessEntity', 'U')
 
 -- VIEW CHANGE TABLE INFORMATIONS
 SELECT * FROM cdc.change_tables WHERE [source_object_id] = OBJECT_ID('Person.BusinessEntity', 'U')
+SELECT * FROM cdc.index_columns WHERE [object_id] = (SELECT object_id FROM cdc.change_tables WHERE [source_object_id] = OBJECT_ID('Person.BusinessEntity', 'U'))
+SELECT * FROM cdc.captured_columns WHERE [object_id] = (SELECT object_id FROM cdc.change_tables WHERE [source_object_id] = OBJECT_ID('Person.BusinessEntity', 'U'))
+
+
+-- VIEW CAPTURE JOB AND CLEANUP JOB CONFIGURATION
+select * from msdb.dbo.cdc_jobs WHERE database_id = DB_ID()
 
 
 -- MONITORING THE CHANGE DATA CAPTURE PROCESS
@@ -137,10 +145,17 @@ BEGIN TRY
 	DECLARE @previousdate Binary(10) = sys.fn_cdc_map_time_to_lsn(N'smallest greater than or equal', DATEADD(DAY, -1, GETDATE()));
 	DECLARE @currentdate Binary(10) = sys.fn_cdc_map_time_to_lsn(N'largest less than or equal', GETDATE());
 
+	--SELECT FORMAT(sys.fn_cdc_map_lsn_to_time(@min_lsn), 'dd-MM-yyyy HH:mm:ss') + ' - ' + FORMAT(sys.fn_cdc_map_lsn_to_time(@max_lsn), 'dd-MM-yyyy HH:mm:ss') AS [interval 1],
+	--	FORMAT(sys.fn_cdc_map_lsn_to_time(@increment_lsn), 'dd-MM-yyyy HH:mm:ss') + ' - ' + FORMAT(sys.fn_cdc_map_lsn_to_time(@decrement_lsn), 'dd-MM-yyyy HH:mm:ss') AS [interval 2],
+	--	FORMAT(sys.fn_cdc_map_lsn_to_time(@begin_lsn), 'dd-MM-yyyy HH:mm:ss') + ' - ' + FORMAT(sys.fn_cdc_map_lsn_to_time(@end_lsn), 'dd-MM-yyyy HH:mm:ss') AS [interval 3],
+	--	FORMAT(sys.fn_cdc_map_lsn_to_time(@previousdate), 'dd-MM-yyyy HH:mm:ss') + ' - ' + FORMAT(sys.fn_cdc_map_lsn_to_time(@currentdate), 'dd-MM-yyyy HH:mm:ss') AS [interval 4]
+
 	DECLARE @col_businessEntityID Int = sys.fn_cdc_get_column_ordinal('Person_BusinessEntity', 'BusinessEntityID');
 	DECLARE @col_rowguid Int = sys.fn_cdc_get_column_ordinal('Person_BusinessEntity', 'rowguid');
 	DECLARE @col_modifiedDate Int = sys.fn_cdc_get_column_ordinal('Person_BusinessEntity', 'ModifiedDate');
 	DECLARE @col_text Int = sys.fn_cdc_get_column_ordinal('Person_BusinessEntity', 'text');
+
+	--SELECT @col_businessEntityID, @col_rowguid, @col_modifiedDate, @col_text
 	
 	SELECT 
 		-- Get all changes for compliance auditing
@@ -210,8 +225,8 @@ BEGIN TRY
 			WHEN 1 THEN N'True'
 			ELSE N'False'
 		END AS [is text updated]
-	FROM cdc.fn_cdc_get_net_changes_Person_BusinessEntity(@max_lsn, @max_lsn, 'all with mask')
-	WHERE BusinessEntityID = 21879; -- row filter options: all, all with mask, all with merge
+	FROM cdc.fn_cdc_get_net_changes_Person_BusinessEntity(@min_lsn, @max_lsn, 'all') -- row filter options: all, all with mask, all with merge
+	WHERE BusinessEntityID = 22880; 
 
 	-- Example of relational operator 'smallest greater than' and 'smallest greater than or equal'
 	-- '2026-03-19 10:48:34.170' - min_lsn
@@ -237,16 +252,70 @@ END CATCH
 DECLARE @from_lsn binary(10),
 	@to_lsn binary(10),
 	@database_transaction_begin_lsn numeric(25,0)
-;
+
 SET @from_lsn = sys.fn_cdc_get_min_lsn('Person_BusinessEntity')
 SET @to_lsn = sys.fn_cdc_get_max_lsn()
 SET @database_transaction_begin_lsn = (SELECT TOP 1 database_transaction_begin_lsn FROM sys.dm_tran_database_transactions)
-;
+
 SELECT q.*
 FROM cdc.fn_cdc_get_all_changes_Person_BusinessEntity(@from_lsn, @to_lsn, N'all') q
 INNER JOIN cdc.lsn_time_mapping m ON q.__$start_lsn = m.start_lsn
 WHERE m.tran_begin_lsn = dbo.fn_convertnumericlsntobinary(@database_transaction_begin_lsn)
 
 select * from cdc.fn_cdc_get_all_changes_Person_BusinessEntity(sys.fn_cdc_get_min_lsn('Person_BusinessEntity'), sys.fn_cdc_get_max_lsn(), N'all')
-select * from cdc.lsn_time_mapping
+select * from cdc.lsn_time_mapping order by tran_begin_lsn
 select * FROM sys.dm_tran_database_transactions
+
+
+
+
+
+
+
+
+
+-- DEMO
+begin transaction
+;with cte_recursive AS (
+	select 
+		NEWID() as uid, 
+		GETDATE() as date, 
+		1 as val
+	union all 
+	select 
+		NEWID(),
+		GETDATE(),
+		val + 1
+	from cte_recursive
+	where val < 10
+)
+insert Person.BusinessEntity(rowguid, ModifiedDate, text)
+select uid, date, val from cte_recursive
+commit transaction
+
+select * from Person.BusinessEntity
+
+update Person.BusinessEntity
+set BusinessEntityID = 22900
+where BusinessEntityID = 22899
+
+update Person.BusinessEntity
+set text = 'ok1'
+where BusinessEntityID = 1
+
+update Person.BusinessEntity
+set text = 'ok2'
+where BusinessEntityID = 2
+
+update Person.BusinessEntity
+set text = '2'
+where BusinessEntityID = 22880
+
+update Person.BusinessEntity
+set text = '4'
+where BusinessEntityID = 22880
+
+
+delete Person.BusinessEntity
+where BusinessEntityID IN (select top 5 BusinessEntityID from Person.BusinessEntity order by BusinessEntityID DESC)
+

@@ -16,14 +16,27 @@
 
 
 
--- DIAGNOSING AND TROUBLESHOOTING
--- 1. Monitor CPU consumption, I/O disk operations, memory usage, throughput (via transactions/seconds), ...
---	+ Low CPU utilization and high throughput, increasing latch wait times -> latch contention.
---	+ CPU increasing disproportionate to throughput, high number of spins and backoffs -> possible spinlock contention.
---	+ High lock waits count -> lock contention.
--- 2. Inspect workload of high concurrency system
---	+ Identify if there are many queries against a single table concurrently.
---	+ Number of connections one SQL Server is limit while there are much higher number of requests on BE server (requests are forced to be wait) -> connection pool size could be limit.
+-- MONITORING, DIAGNOSING AND RESOLVING
+-- 1. Lock contention:
+--	+ High lock waits count
+--	+ Low CPU usage, low throughput
+-- 2. Latch contention:
+--	+ Low CPU utilization and high throughput
+--	+ Rapidly increasing latch wait times during a period.
+--	+ Identify whether there are excessive contentions on tempdb or in-memory structure -> use appropriate solutions for each scenario.
+-- 3. Spinlock contention (possible symptoms):
+--	+ CPU increasing disproportionate to throughput.
+--	+ High number of spins and backoffs.
+-- 4. Deadlock
+-- 5. Overhead systems
+--	+ Many active sessions are running, many requests receive -> very busy concurrency system (upgrade hardware, optimize query, use other strategies to handle concurrency, ...)
+--	+ CPU does not reach it max, and memory usage is at peak -> increase memory; use parallel query to make use of CPU strength.
+--	+ High CPU usage -> upgrade CPU; identify bottleneck and fix it (bad query, lock, waiting, ...)
+--	+ High disk I/O operations: upgrade I/O subsystem and may physically seperate it with the SQL server system; reduce tempdb usage, use in-memory tempdb (if memory is available).
+--	+ High response time, but low resource usage -> inspect connection pool limit (increase its limit if neccessary); resolve lock, wait time of queries.
+--	+ Large number of queries against small number of tables concurrently -> distribute the queries to replicas; use lowest transaction level for high reads.
+--
+
 
 
 -- If a query is slow, go check

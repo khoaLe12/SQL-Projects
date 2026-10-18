@@ -123,7 +123,7 @@ WHERE MATCH(Person-(likes)->Restaurant)
 	AND Person.name = 'John'
 
 -- Find the restaurants that John's friends like
-SELECT Restaurant.name
+SELECT Person2.name, Restaurant.name
 FROM Person Person1, friendOf fo, Person Person2, likes, Restaurant
 WHERE MATCH(Person1-(fo)->Person2-(likes)->Restaurant)
 	AND Person1.name = 'John'

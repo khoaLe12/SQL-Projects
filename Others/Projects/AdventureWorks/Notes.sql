@@ -50,7 +50,7 @@ where LargePhotoFileName like '%greena_%' ESCAPE 'a'
 select 
 	name
 from Production.Product
-where name like 'chain_[a-Z][^a-Z]%'
+where name like 'chain_[a-Z][a-Z]%'
 
 
 
@@ -63,6 +63,12 @@ select
 from Person.Person p 
 inner join Person.EmailAddress a on a.BusinessEntityID = p.BusinessEntityID
 
+
+declare @pNames nvarchar(max) = ''
+select top 10 
+	@pNames = concat(@pNames, ', ', FirstName)
+from Person.Person
+select @pNames
 
 
 
