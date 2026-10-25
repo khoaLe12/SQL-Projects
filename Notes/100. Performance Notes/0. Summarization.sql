@@ -2,17 +2,37 @@
 
 
 -- TABLE DESIGN STRATEGIES
--- 1. Avoid over normalizing table since it make query to use JOIN operations.
+-- 1. Avoid over normalizing table since it make query to use more JOIN operations to fullfill data.
 -- 2. Normalize table only when it has many duplicate values, or consists of large object data/ row overflow data.
 -- 3. Make clustered index as narrow as possible, and make it ever-increasing.
 
 
 
+-- INDEX DESIGN STRATEGIES
+-- 1. Clustered index:
+--	+ spread-out insert using hash value:
+--		- low contention, better parallel inserts
+--		- but more page splits, more fragmentation, worse range scan
+--	+ sequential insert:
+--		- low fragmentation, few page splis, greate range scan
+--		- but potential latch hotspot (high insertions occurs concurrently at the same table).
+--		* possible solution to reduce last-page contention using option: WITH (OPTIMIZE_FOR_SEQUENTIAL_KEY = ON)
 
--- QUERY STRATEGIES
+
+
+-- QUERY PLAN STRATEGIES
 -- 1. Reduce the code paths (less wotk is performed and avoid contention points):
 --	+ Parameterized queries: utilizing parameterized queries and stored procedure to reduce the cost of generating execution plans.
 --	+ Fully Qualified Names: fully qualifying names of all objects helps remove the code paths required to resolve names
+
+
+
+-- QUERY STRATEGIES
+-- 1. Search word/phrase in a text document: consider store the document in a seperate table -> create full-text index and use full-text query
+--	+ Full text query perform search on each tokens, not the whole text data -> much faster then LIKE query.
+-- 2. Use User Definded Functions (UDFs)
+--	+ try to create function that is inlinable as possible -> enable INLINE option for each query
+--	+ This prevents the context switching caller and invoked function 
 
 
 

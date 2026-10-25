@@ -22,7 +22,7 @@
 --		- Modifying external tables.
 --		- Using non-local cursors.
 --		- Sending emails, catalog modifications, or returning result sets directly.
---	+ Nondeterministic side-effecting functions (MEWID(), NEWSEQUENTIALID(), RAND(), TEXTPTR()) cannot be called inside UDFs.
+--	+ Nondeterministic side-effecting functions (NEWID(), NEWSEQUENTIALID(), RAND(), TEXTPTR()) cannot be called inside UDFs.
 
 -- 5. Valid statements inside UDFs:
 --	+ DECLARE (local variables, cursors).

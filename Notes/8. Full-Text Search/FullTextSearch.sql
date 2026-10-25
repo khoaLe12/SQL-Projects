@@ -168,7 +168,6 @@ WITH CHANGE_TRACKING AUTO;
 GO
 
 
-
 -- Find products that contain the word "Mountain"
 SELECT Name, ListPrice
 FROM Production.Product
@@ -176,10 +175,65 @@ WHERE CONTAINS(Name, 'Mountain');
 GO
 
 
+-- Find products that contain the phrase "Mountain Frame"
+SELECT name, ListPrice
+FROM Production.Product
+WHERE CONTAINS(name, '"Mountain Frame"');
+GO
+
+
+-- Find products that contains word "Mountain" or word "Cap" or word "Seat"
+SELECT name, ListPrice
+FROM Production.Product
+WHERE CONTAINS(Name, 'Mountain OR Cap OR Seat');
+GO
+
+
+-- Find products that contains word "Mountain" and "Bike"
+SELECT name, ListPrice
+FROM Production.Product
+WHERE CONTAINS(Name, 'Mountain AND Bike');
+GO
+
+
+-- Find products that contains word "Mountain" and not "Bike"
+SELECT name, ListPrice
+FROM Production.Product
+WHERE CONTAINS(Name, 'Mountain AND NOT Bike');
+GO
+
+
+-- Find products that contains word "Mountain" and all inflectional form of Cap (E.g. Cap, Caps)
+SELECT name, ListPrice
+FROM Production.Product
+WHERE CONTAINS(Name, 'Mountain AND FORMSOF(INFLECTIONAL, "Cap")');
+GO
+
+
 -- Search for all documents that contain words related to "vital safety components"
-SELECT Title
+SELECT Title, Document
 FROM Production.Document
 WHERE FREETEXT (Document, 'vital safety components')
+
+
+-- Search for all product description that contains all inflectional form of word "utilize" that NEAR word begins with "ground"
+DECLARE @search Nvarchar(4000) = (
+	SELECT
+		STRING_AGG(display_term + ' NEAR "ground*"', ' OR ')
+	FROM sys.dm_fts_parser
+	(
+		'FORMSOF(INFLECTIONAL, "utilize")',
+		1033,  -- English
+		0,
+		0
+	)
+)
+SELECT ProductDescriptionID, Description
+FROM Production.ProductDescription
+WHERE CONTAINS(
+	Description,  
+	@search
+)
 
 
 -- Query product description that contains the word "aluminum" near either the word "light" or the word "lightweight" with rank of 2 or higher.
@@ -202,6 +256,7 @@ GO
 --	with all of them appearing in order and within three intervening non-search terms.
 -- Ex: Cats enjoy hunting mice``, but avoid dogs``. 
 --	   Cats enjoy hunting mice``, but avoid dog``.
+--	   "mice``," is counted a single word 
 SELECT 
 	ProductDescriptionID,
 	Description

@@ -124,7 +124,7 @@
 -- 3. Can be combined with the "index create memory" option to reduce I/O costs.
 -- 4. SET to OFF by default:
 --	+ The sort runs are stored in the same location of base table's file group
---	+ During the index building, SQL server has to change between disk read and disk write, and move the disk heads between sort runs area and data page area, and index page area
+--	+ During the index building, SQL server has to change between disk read and disk write, and move the disk heads between sort runs area, data page area, and index page area
 -- 5. SET to ON:
 --	+ The sort runs are stored in other set of disks, help to seperate the process of disk read/write between sort runs and base table's data files
 --	+ The disk reads of data page generally continue more serially, also the disk writes to tempdb are generally serial, as do the writes of final index
@@ -141,9 +141,19 @@
 
 
 
+IF DB_ID('SQLTestDB') IS NULL
+BEGIN
+	CREATE DATABASE SQLTestDB
+END
+
 
 USE SQLTestDB;
 GO
+
+
+CREATE SCHEMA sc2;
+GO
+
 
 
 -- LIST ALL INDEXES OF A SPECIFIC TABLE
@@ -193,8 +203,8 @@ REBUILD WITH (
 	ALLOW_ROW_LOCKS = ON,
 	SORT_IN_TEMPDB = ON,
 	DATA_COMPRESSION = PAGE, -- ROW
-	MAXDOP = 8,
-	COMPRESS_ALL_ROW_GROUPS = ON
+	MAXDOP = 8
+	--COMPRESS_ALL_ROW_GROUPS = ON
 	-- ONLINE = ON -- only available on Enterprise edition of SQL Server or Azure SQL Edge
 )
 ;
@@ -243,6 +253,7 @@ WHERE i.is_hypothetical = 0 AND i.index_id <> 0
 -- 3. Heaps are not ideal for frequently updated data because updates can cause fragmentation.
 --	+ Forwarded records (row relocation with pointers) may occur, leading to additional I/O overhead.
 -- 4. Each row in a heap is identified by an 8-byte Row Identifier (RID), which points to the physical location of the row.
+-- 5. Heap table is ideal for: Audit table, Transaction log table, ETL staging table, Telementary events, Message queue table.
 
 -- Check index types of all tables, index_id = 0 -> heap, index_id = 1 -> clustered index
 DROP TABLE IF EXISTS sc2.Heap1
@@ -252,7 +263,7 @@ CREATE TABLE sc2.Heap1 (
 )
 ;
 DROP TABLE IF EXISTS sc2.Heap2
-SELECT * INTO sc2.Heap2 FROM dbo.SQLTest
+SELECT * INTO sc2.Heap2 FROM sc2.table_summary
 ;
 SELECT 
 	CONCAT(s.name, '.', t.name) AS [table],
@@ -269,7 +280,7 @@ INNER JOIN sys.indexes i ON t.object_id = i.object_id
 INNER JOIN sys.partitions p ON t.object_id = p.object_id AND i.index_id = p.index_id
 INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
 LEFT JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE i.index_id = 2 -- 0 → Heap, 1 → Clustered index, 2 → Nonclustered index
+--WHERE i.index_id = 0 -- 0 → Heap, 1 → Clustered index, 2 → Nonclustered index
 GROUP BY t.name,
 	s.name,
 	i.index_id,
@@ -443,7 +454,7 @@ INCLUDE ([name], [value])
 -- 3G: INDEX ON COMPUTED COLUMNS
 -- To create an index on a computed column, the column must meet several requirements:
 -- 1. Ownership requirements: 
---		All functions referenced in the computed column expression must be owned by the same user as the table.
+--		All functions referenced in the computed column expression must be owned by the same user as the table (same schema name).
 -- 2. Determinism requirements: 
 --		The expression must be deterministic - it must always return the same result for the same input values.
 --		Examples of nondeterministic functions:
@@ -513,7 +524,7 @@ CREATE NONCLUSTERED INDEX Idx_Table_computedcolumn_nonprecise2 ON sc2.Table_comp
 -- 3. Deleted rows are tracked in a delta store (rowstore B-tree).
 --	+ When enough rows are deleted, REORGANIZE removes them from compressed rowgroups and clear the delta store.
 --	+ This improves index quality and reduce fragmentation.
--- 4. Delat rowgroups and deltastore:
+-- 4. Delta rowgroups and deltastore:
 --	+ Delta rowgroup = clustered B-tree rowstore used for staging data before compression.
 --	+ Deltastore = collection of delta rowgroups.
 --	+ Small inserts go into the deltastore until they reach ~102,400 rows, then are compressed into columnstore.
@@ -539,12 +550,19 @@ CREATE NONCLUSTERED INDEX Idx_Table_computedcolumn_nonprecise2 ON sc2.Table_comp
 --		+ This improves segment metadata quality and increases rowgroup elimination efficiency.
 
 -- Define columnstore index
+IF OBJECT_ID('ColumnStoreTable') IS NOT NULL
+	DROP TABLE ColumnStoreTable
 CREATE TABLE ColumnStoreTable (
 	id Nvarchar(50),
 	name Nvarchar(20),
 	value Int
 )
 CREATE CLUSTERED COLUMNSTORE INDEX Idx_ColumnStoreIndex ON ColumnStoreTable WITH (MAXDOP = 1);
+
+ALTER INDEX Idx_ColumnStoreIndex ON ColumnStoreTable
+REORGANIZE WITH (
+	COMPRESS_ALL_ROW_GROUPS = ON
+)
 
 -- Prepare for bulk insert
 WITH CTE_LargeData AS (
@@ -563,8 +581,8 @@ WITH CTE_LargeData AS (
 SELECT * INTO ##temp FROM CTE_LargeData
 OPTION (MAXRECURSION 0)
 -- ! This require enabling xp_cmdshell, and configuring SQL Server protocol to use SSL/TLS certificate from trusted authorities, and set encryption requirement to be obligatory
-EXEC sys.xp_cmdshell 'bcp "SELECT * FROM ##temp" queryout "D:\Projects\SQL-Projects\Notes\ColumnStoreTable1.csv" -c -t, -r\n -S localhost\SQLEXPRESS -U sa -P Khoa@153426';
-EXEC sys.xp_cmdshell 'bcp "SELECT TOP 102000 * FROM ##temp" queryout "D:\Projects\SQL-Projects\Notes\ColumnStoreTable2.csv" -c -t, -r\n -S localhost\SQLEXPRESS -U sa -P Khoa@153426';
+EXEC sys.xp_cmdshell 'bcp "SELECT * FROM ##temp" queryout "D:\Projects\SQL-Projects\Notes\ColumnStoreTable1.csv" -c -t, -r\n -S localhost -U sa -P 123';
+EXEC sys.xp_cmdshell 'bcp "SELECT TOP 102000 * FROM ##temp" queryout "D:\Projects\SQL-Projects\Notes\ColumnStoreTable2.csv" -c -t, -r\n -S localhost -U sa -P 123';
 
 -- Bulk insert 1,048,578 records
 BULK INSERT ColumnStoreTable
@@ -591,12 +609,12 @@ SELECT
 	CONCAT(OBJECT_SCHEMA_NAME(cs.[object_id], DB_ID()), '.', OBJECT_NAME(cs.[object_id])) AS [table],
 	i.name AS [index],
 	cs.partition_number AS [partition],
-	cs.row_group_id AS [rowgroups],
-	cs.delta_store_hobt_id AS [delta rowgroups],
+	cs.row_group_id AS [rowgroup id],
+	cs.delta_store_hobt_id AS [deltastore id],
 	cs.state_desc AS [state],
-	cs.total_rows AS [total rows],
+	FORMAT(cs.total_rows, 'N') AS [total rows],
 	ISNULL(cs.deleted_rows, 0) AS [deleted rows],
-	RTRIM(CAST(ISNULL(cs.size_in_bytes, 0) AS Char)) + ' bytes' AS [size]
+	RTRIM(CAST(ISNULL(cs.size_in_bytes / 1024.0 / 1024.0, 0) AS Char)) + ' MB' AS [size]
 FROM sys.dm_db_column_store_row_group_physical_stats cs
 INNER JOIN sys.indexes i ON i.object_id = cs.object_id AND i.index_id = cs.index_id
 ORDER BY cs.object_id, cs.index_id, cs.row_group_id
@@ -659,7 +677,7 @@ GO
 --	+ Defined as the ratio of deleted rows to total rows in compressed rowgroups.
 -- 4. Maintenance operations:
 --	+ REORGANIZE (rowstore): physically reorders leaf-level pages and compacts them to the index fill factor.
---	+ REORGANIZE (columnstore): merges delta rowgroups into larger compressed compressed rowgroups, reducing fragmentation (cost CPUs for compressing operations).
+--	+ REORGANIZE (columnstore): merges delta rowgroups into larger compressed rowgroups, reducing fragmentation (cost CPUs for compressing operations).
 --	+ REBUILD (rowstore): drops and recreates the entire index tree, removing fragmentation at all levels. Can be applied to one or all indexes.
 --	+ REBUILD (columnstore): removes fragmentation and moves deltastore rows into compressed columnstore.
 --	+ REBUILD also updates index statistics.
